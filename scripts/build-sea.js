@@ -14,14 +14,19 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
+const sharp = require('sharp');
+const pngToIco = require('png-to-ico').default;
 
 const DIST = path.resolve(__dirname, '..', 'dist');
+const ASSETS = path.resolve(__dirname, '..', 'assets');
 const BUNDLED_JS = path.join(DIST, 'pug-cli-bundled.js');
 const SEA_CONFIG = path.join(DIST, 'sea-config.json');
 const SEA_BLOB = path.join(DIST, 'sea-prep.blob');
 const OUTPUT_BINARY = path.join(DIST, os.platform() === 'win32'
   ? 'pug.exe'
   : 'pug');
+const SVG_ICON = path.join(ASSETS, 'icon.svg');
+const ICO_ICON = path.join(DIST, 'icon.ico');
 
 function checkPrerequisites() {
   const nodeMajor = parseInt(process.version.slice(1).split('.')[0], 10);
@@ -43,6 +48,22 @@ function checkPrerequisites() {
   }
 }
 
+async function generateIcon() {
+  if (!fs.existsSync(SVG_ICON)) {
+    console.log('No SVG icon found, skipping icon generation.');
+    return;
+  }
+  console.log('Generating ICO icon from SVG...');
+  // Convert SVG to PNG at multiple sizes via sharp, then wrap as ICO
+  const pngBuffer = await sharp(SVG_ICON)
+    .resize(256, 256)
+    .png()
+    .toBuffer();
+  const icoBuffer = await pngToIco([pngBuffer]);
+  fs.writeFileSync(ICO_ICON, icoBuffer);
+  console.log('ICO icon created:', ICO_ICON);
+}
+
 function createSeaConfig() {
   const config = {
     main: BUNDLED_JS,
@@ -53,6 +74,58 @@ function createSeaConfig() {
   };
   fs.writeFileSync(SEA_CONFIG, JSON.stringify(config, null, 2));
   console.log('SEA config created:', SEA_CONFIG);
+}
+
+function toArrayBuffer(buf) {
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+}
+
+/**
+ * Replace the icon resource of the output .exe with the custom ICO.
+ * Node.js SEA does not support an `icon` config field; instead we post-process
+ * the PE binary with resedit to swap the RT_ICON / RT_GROUP_ICON resources.
+ */
+function setIcon() {
+  if (os.platform() !== 'win32') return;
+  if (!fs.existsSync(ICO_ICON)) {
+    console.log('No ICO found, skipping icon injection.');
+    return;
+  }
+
+  console.log('Replacing icon resource in executable...');
+  const { NtExecutable, NtExecutableResource, Data, Resource } = require('resedit');
+
+  // Read the output exe
+  const exeBuf = fs.readFileSync(OUTPUT_BINARY);
+  const exec = NtExecutable.from(toArrayBuffer(exeBuf), { ignoreCert: true });
+  const res = NtExecutableResource.from(exec, true);
+
+  // Parse the ICO file
+  const icoBuf = fs.readFileSync(ICO_ICON);
+  const icoView = new DataView(toArrayBuffer(icoBuf));
+  const iconCount = icoView.getUint16(4, true);
+
+  const icons = [];
+  for (let i = 0; i < iconCount; i++) {
+    const entryOff = 6 + i * 16;
+    const width = icoView.getUint8(entryOff) || 256;
+    const height = icoView.getUint8(entryOff + 1) || 256;
+    const bitCount = icoView.getUint16(entryOff + 6, true);
+    const dataSize = icoView.getUint32(entryOff + 8, true);
+    const dataOff = icoView.getUint32(entryOff + 12, true);
+
+    const imgBuf = icoBuf.subarray(dataOff, dataOff + dataSize);
+    icons.push(new Data.RawIconItem(toArrayBuffer(imgBuf), width, height, bitCount));
+  }
+
+  // Replace icon group 1, lang 1033 (en-US)
+  Resource.IconGroupEntry.replaceIconsForResource(res.entries, 1, 1033, icons);
+
+  // Write back
+  res.outputResource(exec, false, true);
+  const outBuf = Buffer.from(exec.generate());
+  fs.writeFileSync(OUTPUT_BINARY, outBuf);
+  console.log('Icon resource replaced.');
 }
 
 function generateBlob() {
@@ -106,10 +179,12 @@ function injectBlob() {
 
 async function main() {
   checkPrerequisites();
+  await generateIcon();
   createSeaConfig();
   generateBlob();
   copyNodeBinary();
   injectBlob();
+  setIcon();
 }
 
 main().catch(err => {
