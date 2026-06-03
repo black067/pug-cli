@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "pug": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./mcp-server.js"]
+    }
+  }
+}
