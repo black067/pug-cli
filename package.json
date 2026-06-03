@@ -14,7 +14,8 @@
   },
   "devDependencies": {
     "esbuild": "^0.25.12",
-    "postject": "^1.0.0-alpha.6"
+    "postject": "^1.0.0-alpha.6",
+    "pug": "^2.0.4"
   },
   "keywords": [],
   "author": "",

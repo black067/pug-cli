@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const pug = require('./pug/packages/pug');
+const pug = require('pug');
 
 function printUsage() {
   console.error(`
@@ -21,7 +21,8 @@ Options:
 
 function printVersion() {
   const pkg = require('./package.json');
-  console.log(`pug-cli v${pkg.version} (pug v${pug.version || '2.0.4'})`);
+  const pugPkg = require('pug/package.json');
+  console.log(`pug-cli v${pkg.version} (pug v${pugPkg.version})`);
 }
 
 function printLicense() {

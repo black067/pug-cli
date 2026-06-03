@@ -7,6 +7,23 @@
  */
 const esbuild = require('esbuild');
 const path = require('path');
+const fs = require('fs');
+
+/**
+ * Inline stub modules for optional heavy dependencies like uglify-js and clean-css.
+ * These are required by pug-filters/lib/run-filter.js but only used when applying
+ * filters with minification — a path rarely taken in normal usage.
+ */
+const stubModulesDir = path.resolve(__dirname, '..', '.build-stubs');
+function ensureStubModule(name, stubCode) {
+  const dir = path.join(stubModulesDir, name);
+  const file = path.join(dir, 'index.js');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, stubCode, 'utf8');
+}
+
+ensureStubModule('uglify-js', `exports.minify = function() { return { code: '' }; };`);
+ensureStubModule('clean-css', `module.exports = function() { return { styles: '' }; };`);
 
 async function main() {
   // All Node.js built-in modules to keep external
@@ -27,6 +44,20 @@ async function main() {
     format: 'cjs',
     outfile: path.resolve(__dirname, '..', 'dist', 'pug-cli-bundled.js'),
     external: nodeBuiltins,
+    plugins: [
+      // Replace optional heavy deps with lightweight stubs
+      {
+        name: 'stub-optional-deps',
+        setup(build) {
+          build.onResolve({ filter: /^uglify-js$/ }, () => {
+            return { path: path.join(stubModulesDir, 'uglify-js', 'index.js') };
+          });
+          build.onResolve({ filter: /^clean-css$/ }, () => {
+            return { path: path.join(stubModulesDir, 'clean-css', 'index.js') };
+          });
+        },
+      },
+    ],
     define: {
       'process.env.NODE_ENV': '"production"',
     },
