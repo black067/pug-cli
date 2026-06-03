@@ -50,7 +50,7 @@ npm run sea:mcp     # 仅构建 SEA 可执行文件
     "pug": {
       "type": "stdio",
       "command": "node",
-      "args": ["<put your pug-mcp-bundled.js path here>"]
+      "args": ["<bundledjsPathHere>"]
     }
   }
 }
@@ -63,7 +63,7 @@ npm run sea:mcp     # 仅构建 SEA 可执行文件
   "servers": {
     "pug": {
       "type": "stdio",
-      "command": "<put your pug-mcp path here>",
+      "command": "<mcpPathHere>",
       "args": []
     }
   }
