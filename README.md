@@ -19,7 +19,53 @@ pug <input.pug> [options]
 ## 构建
 
 ```bash
-npm run build     # 打包 JS + 构建 SEA 可执行文件
+npm run build     # 打包 JS + 构建 SEA 可执行文件 (pug.exe)
 npm run bundle    # 仅打包 JS
 npm run sea       # 仅构建 SEA 可执行文件
+```
+
+## MCP 支持
+
+本项目提供独立的 **pug-mcp.exe**，可作为 [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) Server 运行，让 AI Agent 直接调用 Pug 编译能力。
+
+下载: [Releases](https://github.com/black067/pug-cli/releases)
+
+### 构建
+
+```bash
+npm run build:mcp   # 打包 JS + 构建 SEA 可执行文件 (pug-mcp.exe)
+npm run bundle:mcp  # 仅打包 JS
+npm run sea:mcp     # 仅构建 SEA 可执行文件
+```
+
+### 在 VS Code 中配置
+
+在项目或用户级 `.vscode/mcp.json` 中添加：
+
+**方式一：Node.js 直接运行（开发时使用，无需构建）**
+
+```json
+{
+  "servers": {
+    "pug": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["<put your pug-mcp-bundled.js path here>"]
+    }
+  }
+}
+```
+
+**方式二：独立可执行文件（发布/分发场景）**
+
+```json
+{
+  "servers": {
+    "pug": {
+      "type": "stdio",
+      "command": "<put your pug-mcp path here>",
+      "args": []
+    }
+  }
+}
 ```
