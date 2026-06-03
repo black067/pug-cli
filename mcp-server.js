@@ -305,5 +305,3 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 const transport = new StdioServerTransport();
 server.connect(transport);
-
-process.stderr.write('pug-mcp server started (stdio)\n');
