@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build pug-cli (Bundle)",
+      "type": "npm",
+      "script": "bundle",
+      "path": "/",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "detail": "使用 esbuild 打包 pug-cli 为单 JS 文件 (dist/pug-cli-bundled.js)"
+    },
+    {
+      "label": "Build pug-cli (SEA Binary)",
+      "type": "npm",
+      "script": "sea",
+      "path": "/",
+      "group": "build",
+      "problemMatcher": [],
+      "dependsOn": ["Build pug-cli (Bundle)"],
+      "detail": "构建 Node.js SEA 独立可执行文件 (dist/pug.exe)"
+    }
+  ]
+}

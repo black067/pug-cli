@@ -1,0 +1,129 @@
+//- 邮件系统 - 列表页布局 (v4)
+//- 画布 400×800，与详情弹窗一致
+//- 底部操作栏布局：返回按钮 + 操作按钮放在底部，便于移动端操作
+
+- var primaryColor = "#3498DB"
+- var dangerColor = "#E74C3C"
+- var cardBg = "#2C3E50"
+- var textPrimary = "#ECF0F1"
+- var textSecondary = "#95A5A6"
+- var textMuted = "#5D6D7E"
+- var goldColor = "#F1C40F"
+- var dividerColor = "#34495E"
+- var mailCount = 6
+
+svg(width="400" height="800" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 800")
+  defs
+    linearGradient#bgGrad(x1="0" y1="0" x2="0" y2="1")
+      stop(offset="0%" stop-color="#1a1a2e")
+      stop(offset="100%" stop-color="#16213e")
+
+  rect(width="400" height="800" fill="url(#bgGrad)")
+
+  //- ===== 顶部标题栏（仅标题，无操作按钮）=====
+  g
+    rect(width="400" height="48" fill="#1a252f")
+    text(x="200" y="32" text-anchor="middle" fill=textPrimary font-size="18" font-weight="bold" font-family="Segoe UI, sans-serif") 邮件
+
+  //- ===== 邮件列表（中间区域，顶部到底部操作栏之间）=====
+  text(x="16" y="68" fill=textSecondary font-size="12" font-family="Segoe UI, sans-serif") 共 #{mailCount} 封邮件
+
+  //- 邮件 1：未读 + 有附件未领取
+  g
+    rect(x="8" y="84" width="384" height="88" rx="8" fill=cardBg opacity="0.2")
+    circle(cx="24" cy="128" r="5" fill=primaryColor)
+    rect(x="40" y="106" width="44" height="44" rx="8" fill="#8B6914" opacity="0.6")
+    text(x="62" y="136" text-anchor="middle" fill=goldColor font-size="16" font-family="Segoe UI, sans-serif") #
+    text(x="96" y="116" fill=textPrimary font-size="14" font-weight="bold" font-family="Segoe UI, sans-serif") 系统
+    text(x="96" y="136" fill=textPrimary font-size="13" font-family="Segoe UI, sans-serif") 排行奖励发放通知
+    text(x="96" y="156" fill=textMuted font-size="11" font-family="Segoe UI, sans-serif") 2026-06-02
+    rect(x="340" y="108" width="40" height="20" rx="4" fill=goldColor)
+    text(x="360" y="122" text-anchor="middle" fill="#1a1a2e" font-size="10" font-weight="bold" font-family="Segoe UI, sans-serif") 附件
+    line(x1="96" y1="172" x2="384" y2="172" stroke=dividerColor stroke-width="0.5" opacity="0.5")
+
+  //- 邮件 2：未读 + 无附件
+  g
+    rect(x="8" y="176" width="384" height="88" rx="8" fill=cardBg opacity="0.2")
+    circle(cx="24" cy="220" r="5" fill=primaryColor)
+    rect(x="40" y="198" width="44" height="44" rx="8" fill="#34495E")
+    text(x="62" y="228" text-anchor="middle" fill=textPrimary font-size="16" font-family="Segoe UI, sans-serif") #
+    text(x="96" y="208" fill=textPrimary font-size="14" font-weight="bold" font-family="Segoe UI, sans-serif") 系统
+    text(x="96" y="228" fill=textPrimary font-size="13" font-family="Segoe UI, sans-serif") 公会通知
+    text(x="96" y="248" fill=textMuted font-size="11" font-family="Segoe UI, sans-serif") 2026-06-01
+    line(x1="96" y1="264" x2="384" y2="264" stroke=dividerColor stroke-width="0.5" opacity="0.5")
+
+  //- 邮件 3：已读 + 附件已领取
+  g
+    rect(x="8" y="268" width="384" height="88" rx="8" fill=cardBg opacity="0.05")
+    circle(cx="24" cy="312" r="3" fill=textMuted)
+    rect(x="40" y="290" width="44" height="44" rx="8" fill="#34495E")
+    text(x="62" y="320" text-anchor="middle" fill=textPrimary font-size="16" font-family="Segoe UI, sans-serif") #
+    text(x="96" y="300" fill=textSecondary font-size="14" font-family="Segoe UI, sans-serif") 系统
+    text(x="96" y="320" fill=textSecondary font-size="13" font-family="Segoe UI, sans-serif") 版本更新补偿
+    text(x="96" y="340" fill=textMuted font-size="11" font-family="Segoe UI, sans-serif") 2026-05-28
+    rect(x="340" y="292" width="40" height="20" rx="4" fill="#27AE60" opacity="0.6")
+    text(x="360" y="306" text-anchor="middle" fill="#fff" font-size="10" font-family="Segoe UI, sans-serif") 已领
+    line(x1="96" y1="356" x2="384" y2="356" stroke=dividerColor stroke-width="0.5" opacity="0.5")
+
+  //- 邮件 4：已读 + 有附件未领取 + 即将过期
+  g
+    rect(x="8" y="360" width="384" height="88" rx="8" fill=cardBg opacity="0.05")
+    circle(cx="24" cy="404" r="3" fill=textMuted)
+    rect(x="40" y="382" width="44" height="44" rx="8" fill="#8B6914" opacity="0.6")
+    text(x="62" y="412" text-anchor="middle" fill=goldColor font-size="16" font-family="Segoe UI, sans-serif") #
+    text(x="96" y="392" fill=textSecondary font-size="14" font-family="Segoe UI, sans-serif") 系统
+    text(x="96" y="412" fill=textSecondary font-size="13" font-family="Segoe UI, sans-serif") 活动奖励发放
+    text(x="96" y="432" fill=textMuted font-size="11" font-family="Segoe UI, sans-serif") 2026-05-25
+    rect(x="340" y="384" width="40" height="20" rx="4" fill=goldColor)
+    text(x="360" y="398" text-anchor="middle" fill="#1a1a2e" font-size="10" font-weight="bold" font-family="Segoe UI, sans-serif") 附件
+    rect(x="340" y="410" width="40" height="18" rx="4" fill=dangerColor)
+    text(x="360" y="423" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold" font-family="Segoe UI, sans-serif") 即将过期
+    line(x1="96" y1="448" x2="384" y2="448" stroke=dividerColor stroke-width="0.5" opacity="0.5")
+
+  //- 邮件 5：已读 + 无附件 + 即将过期
+  g
+    rect(x="8" y="452" width="384" height="88" rx="8" fill=cardBg opacity="0.05")
+    circle(cx="24" cy="496" r="3" fill=textMuted)
+    rect(x="40" y="474" width="44" height="44" rx="8" fill="#34495E")
+    text(x="62" y="504" text-anchor="middle" fill=textPrimary font-size="16" font-family="Segoe UI, sans-serif") #
+    text(x="96" y="484" fill=textSecondary font-size="14" font-family="Segoe UI, sans-serif") 系统
+    text(x="96" y="504" fill=textSecondary font-size="13" font-family="Segoe UI, sans-serif") 服务器维护通知
+    text(x="96" y="524" fill=textMuted font-size="11" font-family="Segoe UI, sans-serif") 2026-05-20
+    rect(x="340" y="502" width="40" height="18" rx="4" fill=dangerColor)
+    text(x="360" y="515" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold" font-family="Segoe UI, sans-serif") 即将过期
+    line(x1="96" y1="540" x2="384" y2="540" stroke=dividerColor stroke-width="0.5" opacity="0.5")
+
+  //- 邮件 6：已读 + 附件已领取
+  g
+    rect(x="8" y="544" width="384" height="88" rx="8" fill=cardBg opacity="0.05")
+    circle(cx="24" cy="588" r="3" fill=textMuted)
+    rect(x="40" y="566" width="44" height="44" rx="8" fill="#34495E")
+    text(x="62" y="596" text-anchor="middle" fill=textPrimary font-size="16" font-family="Segoe UI, sans-serif") #
+    text(x="96" y="576" fill=textSecondary font-size="14" font-family="Segoe UI, sans-serif") 系统
+    text(x="96" y="596" fill=textSecondary font-size="13" font-family="Segoe UI, sans-serif") 勇者招募活动
+    text(x="96" y="616" fill=textMuted font-size="11" font-family="Segoe UI, sans-serif") 2026-05-15
+    rect(x="340" y="568" width="40" height="20" rx="4" fill="#27AE60" opacity="0.6")
+    text(x="360" y="582" text-anchor="middle" fill="#fff" font-size="10" font-family="Segoe UI, sans-serif") 已领
+
+  //- ===== 底部操作栏（返回 + 操作按钮）=====
+  g
+    //- 底部背景
+    rect(x="0" y="700" width="400" height="100" fill="#1a252f")
+    line(x1="0" y1="700" x2="400" y2="700" stroke=dividerColor stroke-width="1")
+
+    //- 返回按钮（左侧，填充三角形）
+    g(cursor="pointer" transform="translate(12, 720)")
+      path(d="M14 22 L34 10 L34 34 Z" fill=textPrimary)
+
+    //- 一键领取（中间，较大按钮）
+    g(cursor="pointer" transform="translate(70, 716)")
+      rect(width="150" height="52" rx="8" fill=primaryColor)
+      text(x="75" y="32" text-anchor="middle" fill="#fff" font-size="15" font-weight="bold" font-family="Segoe UI, sans-serif") 一键领取
+      //- 红点提示
+      circle(cx="132" cy="12" r="6" fill=dangerColor)
+      circle(cx="132" cy="12" r="6" fill="none" stroke="#1a252f" stroke-width="1.5")
+
+    //- 一键已读（右侧）
+    g(cursor="pointer" transform="translate(234, 716)")
+      rect(width="150" height="52" rx="8" fill=textSecondary)
+      text(x="75" y="32" text-anchor="middle" fill="#fff" font-size="15" font-weight="bold" font-family="Segoe UI, sans-serif") 一键已读
