@@ -1,0 +1,147 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # ── Job 1: Bundle JS (platform-independent, built once on Ubuntu) ──
+  bundle:
+    name: Bundle JS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - run: npm ci
+
+      - name: Bundle pug-cli
+        run: npm run bundle
+
+      - name: Bundle pug-mcp
+        run: npm run bundle:mcp
+
+      - name: Stage JS bundles
+        run: |
+          mkdir -p staging
+          cp dist/pug-cli-bundled.js dist/pug-mcp-bundled.js staging/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: js-bundles
+          path: staging/*
+
+  # ── Job 2: Build SEA binaries (matrix: win / linux / mac) ──
+  build-sea:
+    name: Build SEA (${{ matrix.platform }})
+    needs: bundle
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            ext: ''
+          - os: windows-latest
+            platform: win
+            arch: x64
+            ext: .exe
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            ext: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: js-bundles
+          path: dist/
+
+      - name: Build pug-cli SEA binary
+        run: npm run sea
+
+      - name: Build pug-mcp SEA binary
+        run: npm run sea:mcp
+
+      - name: Rename SEA binaries
+        shell: bash
+        run: |
+          mv dist/pug${{ matrix.ext }} dist/pug-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}
+          mv dist/pug-mcp${{ matrix.ext }} dist/pug-mcp-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}
+
+      - name: Stage SEA binaries
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp dist/pug-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }} staging/
+          cp dist/pug-mcp-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }} staging/
+
+      - name: Generate SHA256 checksums
+        shell: bash
+        run: |
+          cd staging
+          for f in \
+            "pug-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}" \
+            "pug-mcp-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}"
+          do
+            if command -v sha256sum &>/dev/null; then
+              sha256sum "$f" > "$f.sha256"
+            else
+              shasum -a 256 "$f" > "$f.sha256"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sea-binaries-${{ matrix.platform }}
+          path: staging/*
+
+  # ── Job 3: Create GitHub Release ──
+  release:
+    name: Create Release
+    needs: build-sea
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sea-binaries-*
+          merge-multiple: true
+          path: release-assets/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: js-bundles
+          path: release-assets/
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true
