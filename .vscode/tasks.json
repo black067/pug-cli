@@ -22,6 +22,25 @@
       "problemMatcher": [],
       "dependsOn": ["Build pug-cli (Bundle)"],
       "detail": "构建 Node.js SEA 独立可执行文件 (dist/pug.exe)"
+    },
+    {
+      "label": "Build pug-mcp (Bundle)",
+      "type": "npm",
+      "script": "bundle:mcp",
+      "path": "/",
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "使用 esbuild 打包 pug-mcp 为单 JS 文件 (dist/pug-mcp-bundled.js)"
+    },
+    {
+      "label": "Build pug-mcp (SEA Binary)",
+      "type": "npm",
+      "script": "sea:mcp",
+      "path": "/",
+      "group": "build",
+      "problemMatcher": [],
+      "dependsOn": ["Build pug-mcp (Bundle)"],
+      "detail": "构建 Node.js SEA 独立可执行文件 (dist/pug-mcp.exe)"
     }
   ]
 }

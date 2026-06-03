@@ -5,14 +5,19 @@
   "type": "commonjs",
   "main": "cli.js",
   "bin": {
-    "pug": "cli.js"
+    "pug": "cli.js",
+    "pug-mcp": "mcp-server.js"
   },
   "scripts": {
     "bundle": "node scripts/bundle.js",
     "sea": "node scripts/build-sea.js",
-    "build": "npm run bundle && npm run sea"
+    "build": "npm run bundle && npm run sea",
+    "bundle:mcp": "node scripts/bundle-mcp.js",
+    "sea:mcp": "node scripts/build-sea-mcp.js",
+    "build:mcp": "npm run bundle:mcp && npm run sea:mcp"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "esbuild": "^0.25.12",
     "png-to-ico": "^3.0.1",
     "postject": "^1.0.0-alpha.6",
