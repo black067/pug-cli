@@ -43,6 +43,11 @@ function handlePugToJs(args) {
   return { content: [{ type: 'text', text: js }] };
 }
 
+function handlePugValidate(args) {
+  pug.compile(args.source, buildPugOptions(args));
+  return { content: [{ type: 'text', text: 'Pug syntax is valid.' }] };
+}
+
 function handlePugRenderFile(args) {
   const filePath = path.resolve(args.filePath);
   if (!fs.existsSync(filePath)) {
@@ -67,6 +72,7 @@ const server = new Server(
       '',
       'This server compiles Pug templates via three tools:',
       '',
+      '- **pug_validate**: Use to quickly check Pug syntax without generating output. Ideal for "validate → fix → re-validate" loops. Much faster than compiling to HTML just to check for errors.',
       '- **pug_to_html**: Use when the user provides Pug source code as a string and wants HTML output. Best for inline templates or code blocks.',
       '- **pug_to_js**: Use when the user wants a client-side JavaScript template function (e.g. for browser use). Only use when explicitly asked for JS/client-side output.',
       '- **pug_render_file**: Use when the user references an existing .pug file on disk by path. This tool reads the file and compiles it. Do NOT use this for inline source strings.',
@@ -83,8 +89,8 @@ const server = new Server(
       '',
       '## Workflow',
       '',
-      '1. User asks to generate HTML from Pug → use pug_to_html with pretty: true by default for readability.',
-      '2. User provides a .pug file path → use pug_render_file.',
+      '1. User provides Pug code → validate first with pug_validate, then compile with pug_to_html (or pug_render_file for files).',
+      '2. Validation fails → fix the syntax error and re-validate. Do NOT blindly re-compile without fixing.',
       '3. User asks for a client-side JS template → use pug_to_js.',
       '4. If the template uses `extends` or `include`, ensure `filename` reflects the actual file path so relative resolution works.',
     ].join('\n'),
@@ -93,6 +99,23 @@ const server = new Server(
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
+    {
+      name: 'pug_validate',
+      description: [
+        'Validate Pug template syntax without generating output.',
+        'Use this FIRST whenever the user provides Pug code — it is lightweight and catches errors quickly.',
+        'On success returns "Pug syntax is valid."; on failure returns the compile error with line number.',
+        'After validation passes, use pug_to_html or pug_render_file to generate output.',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', description: 'Pug template source code to validate.' },
+          filename: { type: 'string', description: 'Virtual filename for error stack traces and basedir.' },
+        },
+        required: ['source'],
+      },
+    },
     {
       name: 'pug_to_html',
       description: [
@@ -154,6 +177,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   try {
     switch (name) {
+      case 'pug_validate':
+        return handlePugValidate(args || {});
       case 'pug_to_html':
         return handlePugToHtml(args || {});
       case 'pug_to_js':
