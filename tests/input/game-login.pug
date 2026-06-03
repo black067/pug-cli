@@ -1,0 +1,88 @@
+-
+  var W = 390, H = 844
+  var bgGrad = { id: 'bgGrad', stops: [['0%', '#1a1a2e'], ['50%', '#16213e'], ['100%', '#0f3460']] }
+  var btnGrad = { id: 'btnGrad', stops: [['0%', '#e94560'], ['100%', '#c23152']] }
+  var btnSec = { id: 'btnSec', stops: [['0%', '#2d5a27'], ['100%', '#1e3d1a']] }
+
+svg(xmlns="http://www.w3.org/2000/svg" viewBox=`0 0 ${W} ${H}` width=W height=H font-family="Arial, sans-serif")
+  defs
+    linearGradient(id=bgGrad.id x1="0" y1="0" x2="0" y2="1")
+      each stop in bgGrad.stops
+        stop(offset=stop[0] stop-color=stop[1])
+    linearGradient(id=btnGrad.id x1="0" y1="0" x2="1" y2="0")
+      each stop in btnGrad.stops
+        stop(offset=stop[0] stop-color=stop[1])
+    linearGradient(id=btnSec.id x1="0" y1="0" x2="1" y2="0")
+      each stop in btnSec.stops
+        stop(offset=stop[0] stop-color=stop[1])
+    filter(id="glow")
+      feGaussianBlur(stdDeviation="3" result="blur")
+      feMerge
+        feMergeNode(in="blur")
+        feMergeNode(in="SourceGraphic")
+
+  //- 背景
+  rect(width=W height=H fill=`url(#${bgGrad.id})`)
+
+  //- 装饰圆
+  circle(cx="310" cy="180" r="130" fill="#e94560" opacity="0.07")
+  circle(cx="70" cy="520" r="160" fill="#2d5a27" opacity="0.08")
+  circle(cx="200" cy="720" r="100" fill="#e94560" opacity="0.04")
+
+  //- ===== 顶部栏 =====
+  //- 公告按钮（左上）
+  g(transform="translate(16, 40)"): rect.r-icon(x=0 y=0 width=36 height=36 rx=10 fill="rgba(255,255,255,0.1)")
+  g(transform="translate(34, 52)")
+    path(d="M0-6a6 6 0 0 1 6 6v4l2 3H-8l2-3v-4a6 6 0 0 1 6-6z" fill="none" stroke="#fff" stroke-width="2")
+    path(d="M-3 10a3 3 0 0 0 6 0" fill="none" stroke="#fff" stroke-width="2")
+    circle(cx="8" cy="-8" r="5" fill="#e94560")
+
+  //- 设置按钮（右上）
+  g(transform="translate(338, 40)"): rect.r-icon(x=0 y=0 width=36 height=36 rx=10 fill="rgba(255,255,255,0.1)")
+  g(transform="translate(356, 58)")
+    circle(cx=0 cy=0 r="6" fill="none" stroke="#fff" stroke-width="2")
+    line(x1=0 y1=-12 x2=0 y2=-9 stroke="#fff" stroke-width=2 stroke-linecap="round")
+    line(x1=0 y1=9 x2=0 y2=12 stroke="#fff" stroke-width=2 stroke-linecap="round")
+    line(x1=-12 y1=0 x2=-9 y2=0 stroke="#fff" stroke-width=2 stroke-linecap="round")
+    line(x1=9 y1=0 x2=12 y2=0 stroke="#fff" stroke-width=2 stroke-linecap="round")
+    line(x1="-8.5" y1="-8.5" x2="-6.5" y2="-6.5" stroke="#fff" stroke-width=2 stroke-linecap="round")
+    line(x1="6.5" y1="6.5" x2="8.5" y2="8.5" stroke="#fff" stroke-width=2 stroke-linecap="round")
+    line(x1="6.5" y1="-8.5" x2="8.5" y2="-6.5" stroke="#fff" stroke-width=2 stroke-linecap="round")
+    line(x1="-8.5" y1="6.5" x2="-6.5" y2="8.5" stroke="#fff" stroke-width=2 stroke-linecap="round")
+
+  //- ===== 游戏 Logo 区域 =====
+  g(transform=`translate(${W/2}, 230)`)
+    circle(cx=0 cy=0 r="48" fill="none" stroke="rgba(233,69,96,0.2)" stroke-width=2)
+    circle(cx=0 cy=0 r="36" fill="none" stroke="rgba(233,69,96,0.4)" stroke-width=1 stroke-dasharray="4 5")
+    //- 剑形 icon
+    path(d="M-4-32 4-32 5 22-5 22Z" fill="#e94560")
+    rect(x="-13" y="17" width=26 height=6 rx=3 fill="#e94560")
+    rect(x="-4" y="23" width=8 height=12 rx=3 fill="#e94560" opacity="0.5")
+    circle(cx=0 cy="37" r=5 fill="#e94560")
+
+  //- ===== 标题 =====
+  text(x=W/2 y="320" text-anchor="middle" font-size=44 font-weight="bold" fill="#fff" letter-spacing=5) 王者之路
+  text(x=W/2 y="352" text-anchor="middle" font-size=13 fill="rgba(255,255,255,0.45)" letter-spacing=7) LEGEND OF ARENA
+
+  //- ===== 开始游戏按钮 =====
+  g(transform="translate(45, 460)" filter="url(#glow)")
+    rect.btn-main(x=0 y=0 width=300 height=58 rx=29 fill=`url(#${btnGrad.id})`)
+    text(x=150 y=36 text-anchor="middle" font-size=21 font-weight="bold" fill="#fff" letter-spacing=4) 开 始 游 戏
+
+  //- ===== 选择服务器按钮 =====
+  g(transform="translate(45, 538)")
+    rect.btn-sub(x=0 y=0 width=300 height=50 rx=25 fill=`url(#${btnSec.id})` opacity=0.9)
+    //- 服务器小图标
+    g(transform="translate(60, 25)"): circle(cx=0 cy=0 r=4 fill="rgba(255,255,255,0.6)")
+    text(x=150 y=31 text-anchor="middle" font-size=16 fill="#fff" letter-spacing=3) 选择服务器
+
+  //- 当前服务器提示
+  text(x=W/2 y="618" text-anchor="middle" font-size=11 fill="rgba(255,255,255,0.28)") 当前: 华东一区 · 推荐服 · 流畅
+
+  //- ===== 底部 =====
+  g(transform="translate(160, 680)")
+    each x in [0, 20, 40, 60]
+      circle(cx=x cy=0 r=3 fill="rgba(255,255,255,0.15)")
+
+  text(x=W/2 y="728" text-anchor="middle" font-size=10 fill="rgba(255,255,255,0.2)") 健康游戏忠告 · 抵制不良游戏 · 拒绝盗版游戏
+  text(x=W/2 y="746" text-anchor="middle" font-size=10 fill="rgba(255,255,255,0.2)") 注意自我保护 · 谨防受骗上当 · 适度游戏益脑
