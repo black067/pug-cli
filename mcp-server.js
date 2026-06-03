@@ -48,15 +48,109 @@ function handlePugValidate(args) {
   return { content: [{ type: 'text', text: 'Pug syntax is valid.' }] };
 }
 
-function handlePugRenderFile(args) {
-  const filePath = path.resolve(args.filePath);
-  if (!fs.existsSync(filePath)) {
-    throw new Error('File not found: ' + filePath);
+/** Check if a string contains glob wildcard characters */
+function hasGlob(str) {
+  return /[*?[\]]/.test(str);
+}
+
+/** Expand a single input entry into a list of resolved file paths */
+function expandInput(entry) {
+  var resolvedAbs = path.resolve(entry);
+
+  // 1. Existing file → direct hit
+  if (fs.existsSync(resolvedAbs) && fs.statSync(resolvedAbs).isFile()) {
+    return [resolvedAbs];
   }
-  const source = fs.readFileSync(filePath, 'utf8');
-  const fn = pug.compile(source, buildPugOptions({ ...args, filename: filePath }));
-  const html = fn(args.locals || {});
-  return { content: [{ type: 'text', text: html }] };
+
+  // 2. Existing directory → blob **/*.pug
+  if (fs.existsSync(resolvedAbs) && fs.statSync(resolvedAbs).isDirectory()) {
+    return fs.globSync(path.join(resolvedAbs, '**/*.pug'));
+  }
+
+  // 3. Contains glob metacharacters → expand via glob
+  if (hasGlob(entry)) {
+    var matches = fs.globSync(entry);
+    if (matches.length === 0) {
+      throw new Error('No files matched glob: ' + entry);
+    }
+    return matches.map(function (m) { return path.resolve(m); });
+  }
+
+  // 4. Not found and not a glob → error
+  throw new Error('File not found: ' + entry);
+}
+
+function handlePugRender(args) {
+  // Normalize input: accept string or array
+  var raw = args.input;
+  if (typeof raw === 'string') raw = [raw];
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new Error('input must be a non-empty file path, glob pattern, directory, or array of these');
+  }
+
+  // Expand all entries, deduplicate, sort
+  var seen = {};
+  var files = [];
+  for (var i = 0; i < raw.length; i++) {
+    var expanded = expandInput(raw[i]);
+    for (var j = 0; j < expanded.length; j++) {
+      if (!seen[expanded[j]]) {
+        seen[expanded[j]] = true;
+        files.push(expanded[j]);
+      }
+    }
+  }
+  files.sort();
+
+  // Compile each file
+  var results = {};
+  var failures = [];
+  for (var k = 0; k < files.length; k++) {
+    var filePath = files[k];
+    try {
+      var source = fs.readFileSync(filePath, 'utf8');
+      var fn = pug.compile(source, buildPugOptions({ ...args, filename: filePath }));
+      var html = fn(args.locals || {});
+      results[filePath] = html;
+    } catch (err) {
+      failures.push({ input: filePath, error: err.message || String(err) });
+    }
+  }
+
+  // Output mode: write to disk
+  if (args.output) {
+    var outDir = path.resolve(args.output);
+    fs.mkdirSync(outDir, { recursive: true });
+    var written = [];
+    var writeErrors = [];
+    var fileKeys = Object.keys(results);
+    for (var w = 0; w < fileKeys.length; w++) {
+      var inPath = fileKeys[w];
+      try {
+        var basename = path.basename(inPath, path.extname(inPath)) + '.html';
+        var outPath = path.join(outDir, basename);
+        fs.writeFileSync(outPath, results[inPath], 'utf8');
+        written.push({ input: inPath, output: outPath });
+      } catch (err) {
+        writeErrors.push({ input: inPath, error: err.message || String(err) });
+      }
+    }
+    var summary = {
+      success: written.length,
+      failed: failures.length + writeErrors.length,
+      files: written,
+    };
+    if (failures.length > 0) summary.compileErrors = failures;
+    if (writeErrors.length > 0) summary.writeErrors = writeErrors;
+    return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
+  }
+
+  // Inline mode: return dictionary
+  var msg = JSON.stringify(results, null, 2);
+  if (failures.length > 0) {
+    msg += '\n\n// Compile errors:\n' + JSON.stringify(failures, null, 2);
+  }
+  return { content: [{ type: 'text', text: msg }] };
 }
 
 // ============================================================
@@ -75,12 +169,13 @@ const server = new Server(
       '- **pug_validate**: Use to quickly check Pug syntax without generating output. Ideal for "validate → fix → re-validate" loops. Much faster than compiling to HTML just to check for errors.',
       '- **pug_to_html**: Use when the user provides Pug source code as a string and wants HTML output. Best for inline templates or code blocks.',
       '- **pug_to_js**: Use when the user wants a client-side JavaScript template function (e.g. for browser use). Only use when explicitly asked for JS/client-side output.',
-      '- **pug_render_file**: Use when the user references an existing .pug file on disk by path. This tool reads the file and compiles it. Do NOT use this for inline source strings.',
+      '- **pug_render**: Compile one or more .pug files on disk to HTML. Accepts single file path, array of file paths, glob patterns (e.g. "folder/*.pug"), or directory paths (auto-globs **/*.pug). Supports optional output directory for writing results to disk.',
       '',
       '## Parameter guidance',
       '',
       '- `source` (required for pug_to_html / pug_to_js): The complete Pug template source code. Do NOT pass file paths here.',
-      '- `filePath` (required for pug_render_file): An absolute or workspace-relative path to a .pug file.',
+      '- `input` (required for pug_render): A single file path, an array of file paths, glob patterns (e.g. "src/**/*.pug"), or directory paths (auto-globbed). Do NOT pass Pug source code.',
+      '- `output` (optional for pug_render): Directory to write compiled HTML files. When omitted, returns a dictionary mapping file paths to HTML content.',
       '- `pretty`: Set to true for human-readable HTML with indentation and line breaks. Defaults to false (compact output).',
       '- `locals`: A JSON object of variables passed to the template. Example: { "title": "Hello", "items": ["a", "b"] }. In Pug, these become local variables like `title` and `items`.',
       '- `filename`: Virtual filename for error stack traces and basedir resolution. When omitted, defaults to "input.pug" with cwd as basedir.',
@@ -89,7 +184,7 @@ const server = new Server(
       '',
       '## Workflow',
       '',
-      '1. User provides Pug code → validate first with pug_validate, then compile with pug_to_html (or pug_render_file for files).',
+      '1. User provides Pug code → validate first with pug_validate, then compile with pug_to_html (or pug_render for files).',
       '2. Validation fails → fix the syntax error and re-validate. Do NOT blindly re-compile without fixing.',
       '3. User asks for a client-side JS template → use pug_to_js.',
       '4. If the template uses `extends` or `include`, ensure `filename` reflects the actual file path so relative resolution works.',
@@ -105,7 +200,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         'Validate Pug template syntax without generating output.',
         'Use this FIRST whenever the user provides Pug code — it is lightweight and catches errors quickly.',
         'On success returns "Pug syntax is valid."; on failure returns the compile error with line number.',
-        'After validation passes, use pug_to_html or pug_render_file to generate output.',
+        'After validation passes, use pug_to_html or pug_render to generate output.',
       ].join(' '),
       inputSchema: {
         type: 'object',
@@ -127,7 +222,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: 'object',
         properties: {
-          source: { type: 'string', description: 'Pug template source code. Do NOT pass a file path here — use pug_render_file for files.' },
+          source: { type: 'string', description: 'Pug template source code. Do NOT pass a file path here — use pug_render for files.' },
           pretty: { type: 'boolean', description: 'Pretty-print HTML output with indentation and line breaks.' },
           locals: { type: 'object', description: 'Template variables as a JSON object. Keys become local variables in Pug.' },
           filename: { type: 'string', description: 'Virtual filename for error stack traces and basedir. Required for extends/include to resolve correctly.' },
@@ -154,20 +249,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
-      name: 'pug_render_file',
+      name: 'pug_render',
       description: [
-        'Compile a Pug template file on disk to HTML.',
-        'Use this when the user references a .pug file by path (absolute or workspace-relative).',
+        'Compile one or more Pug template files on disk to HTML.',
+        'Accepts: a single file path, an array of file paths, glob patterns (e.g. "src/**/*.pug"), or directory paths (auto-globs **/*.pug).',
+        'Use optional "output" to write results to disk; otherwise returns a { filePath: html } dictionary.',
         'Do NOT pass Pug source code here — use pug_to_html for inline source strings.',
       ].join(' '),
       inputSchema: {
         type: 'object',
         properties: {
-          filePath: { type: 'string', description: 'Absolute or workspace-relative path to a .pug file. Do NOT pass Pug source code.' },
+          input: {
+            oneOf: [
+              { type: 'string', description: 'A single file path, glob pattern, or directory.' },
+              { type: 'array', items: { type: 'string' }, description: 'Array of file paths, glob patterns, or directories.' },
+            ],
+            description: 'One or more file paths, glob patterns (e.g. "src/**/*.pug"), or directory paths (auto-globs **/*.pug).',
+          },
+          output: { type: 'string', description: 'Optional output directory. When specified, compiled HTML files are written here. When omitted, returns a dictionary mapping input paths to HTML content.' },
           pretty: { type: 'boolean', description: 'Pretty-print HTML output with indentation and line breaks.' },
           locals: { type: 'object', description: 'Template variables as a JSON object. Keys become local variables in Pug.' },
         },
-        required: ['filePath'],
+        required: ['input'],
       },
     },
   ],
@@ -183,8 +286,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return handlePugToHtml(args || {});
       case 'pug_to_js':
         return handlePugToJs(args || {});
-      case 'pug_render_file':
-        return handlePugRenderFile(args || {});
+      case 'pug_render':
+        return handlePugRender(args || {});
       default:
         throw new Error('Unknown tool: ' + name);
     }
