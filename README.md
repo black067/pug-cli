@@ -26,11 +26,13 @@ npm run sea       # 仅构建 SEA 可执行文件
 
 ## MCP 支持
 
-本项目提供独立的 **pug-mcp.exe**，可作为 [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) Server 运行，让 AI Agent 直接调用 Pug 编译能力。
+本项目提供独立的 **pug-mcp** (`js` / `SEA`)，可作为 [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) Server 运行，让 AI Agent 直接调用 Pug 编译能力。
+
+### Download
 
 下载: [Releases](https://github.com/black067/pug-cli/releases)
 
-### 构建
+### Build (Optional)
 
 ```bash
 npm run build:mcp   # 打包 JS + 构建 SEA 可执行文件 (pug-mcp.exe)
