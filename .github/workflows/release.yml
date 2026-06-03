@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # ── Job 1: Bundle JS (platform-independent, built once on Ubuntu) ──
   bundle:
@@ -94,21 +98,6 @@ jobs:
           cp dist/pug-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }} staging/
           cp dist/pug-mcp-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }} staging/
 
-      - name: Generate SHA256 checksums
-        shell: bash
-        run: |
-          cd staging
-          for f in \
-            "pug-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}" \
-            "pug-mcp-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}"
-          do
-            if command -v sha256sum &>/dev/null; then
-              sha256sum "$f" > "$f.sha256"
-            else
-              shasum -a 256 "$f" > "$f.sha256"
-            fi
-          done
-
       - uses: actions/upload-artifact@v7
         with:
           name: sea-binaries-${{ matrix.platform }}
@@ -137,11 +126,54 @@ jobs:
           name: js-bundles
           path: release-assets/
 
+      - name: Organize assets into groups
+        shell: bash
+        run: |
+          cd release-assets
+
+          # JS Bundles
+          mkdir -p "JS Bundles"
+          mv pug-cli-bundled.js pug-mcp-bundled.js "JS Bundles/" 2>/dev/null || true
+
+          # pug-mcp binaries
+          mkdir -p pug-mcp
+          mv pug-mcp-* pug-mcp/ 2>/dev/null || true
+
+          # pug-cli binaries
+          mkdir -p pug-cli
+          for f in \
+            pug-linux-x64 \
+            pug-win-x64.exe \
+            pug-darwin-arm64; do
+            [ -f "$f" ] && mv "$f" pug-cli/
+          done
+
+      - name: Generate SHA256SUMS
+        shell: bash
+        run: |
+          cd release-assets
+
+          # Compute SHA256 for all distributable files
+          for dir in "JS Bundles" pug-cli pug-mcp; do
+            for f in "$dir"/*; do
+              [ -f "$f" ] && sha256sum "$f"
+            done
+          done | sort -k2 > SHA256SUMS
+
       - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v3
-        with:
-          files: release-assets/*
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          # Create release with auto-generated notes (skip if already exists)
+          gh release create "$TAG" --generate-notes 2>/dev/null || \
+            echo "Release already exists, skipping creation"
+
+          # Upload all assets preserving directory structure as grouping
+          cd release-assets
+          find . -type f | while read -r f; do
+            name="${f#./}"
+            echo "Uploading: $name"
+            gh release upload "$TAG" "$f#$name" --clobber
+          done
