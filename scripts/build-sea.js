@@ -147,23 +147,9 @@ function copyNodeBinary() {
 
 function injectBlob() {
   console.log('Injecting SEA blob into binary...');
-  const postjectPath = path.resolve(__dirname, '..', 'node_modules', '.bin', 'postject');
-  const hasPostject = fs.existsSync(postjectPath);
-
-  let cmd;
-  if (hasPostject) {
-    cmd = `"${postjectPath}"`;
-  } else {
-    // Use npx to run postject
-    cmd = 'npx --yes postject';
-  }
-
-  const sig = os.platform() === 'win32'
-    ? 'NODE_SEA_BLOB'
-    : 'NODE_SEA_BLOB';
 
   execSync(
-    `${cmd} "${OUTPUT_BINARY}" NODE_SEA_BLOB "${SEA_BLOB}" ` +
+    `npx --yes postject "${OUTPUT_BINARY}" NODE_SEA_BLOB "${SEA_BLOB}" ` +
     `--sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2`,
     {
       stdio: 'inherit',
