@@ -32,38 +32,6 @@ npm run sea       # 仅构建 SEA 可执行文件
 
 下载: [Releases](https://github.com/black067/pug-cli/releases)
 
-#### 校验下载文件
-
-每个 Release 都附带 `SHA256SUMS` 校验清单，用于验证下载文件未被篡改或损坏。
-
-**Linux / macOS / WSL / Git Bash：**
-
-```bash
-# 1. 下载 SHA256SUMS 和需要的二进制文件（以 v1.2.0 为例）
-curl -LO https://github.com/black067/pug-cli/releases/download/v1.2.0/pug-linux-x64
-curl -LO https://github.com/black067/pug-cli/releases/download/v1.2.0/SHA256SUMS
-
-# 2. 校验已下载的文件（--ignore-missing 跳过未下载的条目）
-sha256sum -c --ignore-missing SHA256SUMS
-
-# 输出 pug-cli/pug-linux-x64: OK 即表示通过
-```
-
-**Windows PowerShell：**
-
-```powershell
-# 1. 下载文件
-Invoke-WebRequest -Uri "https://github.com/black067/pug-cli/releases/download/v1.2.0/pug-win-x64.exe" -OutFile "pug-win-x64.exe"
-Invoke-WebRequest -Uri "https://github.com/black067/pug-cli/releases/download/v1.2.0/SHA256SUMS" -OutFile "SHA256SUMS"
-
-# 2. 从清单中提取该文件的预期 SHA256
-$expected = (Select-String -Path SHA256SUMS -Pattern "pug-win-x64").Line.Split(" ")[0]
-
-# 3. 计算实际 SHA256 并比较
-$actual = (Get-FileHash pug-win-x64.exe -Algorithm SHA256).Hash.ToLower()
-if ($actual -eq $expected) { Write-Host "OK" } else { Write-Host "FAIL - 文件可能损坏或已被篡改" }
-```
-
 ### Build (Optional)
 
 ```bash
