@@ -142,7 +142,7 @@ jobs:
           cd release-assets
 
           # Compute SHA256 for all distributable files
-          for dir in "JS Bundles" pug-cli pug-mcp; do
+          for dir in "JS Bundle" pug-cli; do
             for f in "$dir"/*; do
               [ -f "$f" ] && sha256sum "$f"
             done
