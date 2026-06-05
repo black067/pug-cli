@@ -124,11 +124,11 @@ jobs:
           cd release-assets
 
           # JS Bundle
-          mkdir -p "JS Bundle"
+          mkdir -p bundle
           mv pug-cli-bundled.js "bundle/" 2>/dev/null || true
 
           # pug-cli binaries
-          mkdir -p pug-cli
+          mkdir -p binary
           for f in \
             pug-cli-linux-x64 \
             pug-cli-win-x64.exe \
@@ -142,7 +142,7 @@ jobs:
           cd release-assets
 
           # Compute SHA256 for all distributable files
-          for dir in "JS Bundle" pug-cli; do
+          for dir in bundle binary; do
             for f in "$dir"/*; do
               [ -f "$f" ] && sha256sum "$f"
             done
