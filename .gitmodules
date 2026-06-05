@@ -1,3 +1,6 @@
 [submodule "pug"]
 	path = pug
 	url = https://github.com/pugjs/pug.git
+[submodule "satori"]
+	path = satori
+	url = https://github.com/vercel/satori.git
