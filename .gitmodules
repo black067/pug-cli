@@ -4,6 +4,3 @@
 [submodule "submodules/satori"]
 	path = submodules/satori
 	url = https://github.com/vercel/satori.git
-[submodule "submodules/HTML-to-SVG-converter"]
-	path = submodules/HTML-to-SVG-converter
-	url = https://github.com/R0mb0/HTML-to-SVG-converter.git
