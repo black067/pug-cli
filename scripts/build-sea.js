@@ -23,8 +23,8 @@ const BUNDLED_JS = path.join(DIST, 'pug-cli-bundled.js');
 const SEA_CONFIG = path.join(DIST, 'sea-config.json');
 const SEA_BLOB = path.join(DIST, 'sea-prep.blob');
 const OUTPUT_BINARY = path.join(DIST, os.platform() === 'win32'
-  ? 'pug.exe'
-  : 'pug');
+  ? 'pug-cli.exe'
+  : 'pug-cli');
 const SVG_ICON = path.join(ASSETS, 'icon.svg');
 const ICO_ICON = path.join(DIST, 'icon.ico');
 

@@ -5,7 +5,7 @@
   "type": "commonjs",
   "main": "src/cli.js",
   "bin": {
-    "pug": "src/cli.js"
+    "pug-cli": "src/cli.js"
   },
   "scripts": {
     "bundle": "node scripts/bundle.js",

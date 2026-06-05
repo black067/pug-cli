@@ -21,7 +21,7 @@
       "group": "build",
       "problemMatcher": [],
       "dependsOn": ["Build pug-cli (Bundle)"],
-      "detail": "构建 Node.js SEA 独立可执行文件 (dist/pug.exe)"
+      "detail": "构建 Node.js SEA 独立可执行文件 (dist/pug-cli.exe)"
     },
 
   ]

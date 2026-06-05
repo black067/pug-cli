@@ -248,7 +248,7 @@ function startWatch(files, opts) {
 
 function printUsage() {
   console.error('');
-  console.error('Usage: pug [options] <file.pug ...>');
+  console.error('Usage: pug-cli [options] <file.pug ...>');
   console.error('');
   console.error('Compilation options (all map to native pug APIs):');
   console.error('  -o, --out <dir>           Output directory (default: current dir)');

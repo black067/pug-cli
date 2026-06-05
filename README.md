@@ -13,16 +13,16 @@
 ## 使用方式
 
 ```bash
-./dist/pug.exe <input.pug> [options]
+./dist/pug-cli.exe <input.pug> [options]
 
 # HELP
-./dist/pug.exe --help # 查阅使用方式
+./dist/pug-cli.exe --help # 查阅使用方式
 ```
 
 ## 构建
 
 ```bash
-npm run build     # 打包 JS + 构建 SEA 可执行文件 (pug.exe)
+npm run build     # 打包 JS + 构建 SEA 可执行文件 (pug-cli.exe)
 npm run bundle    # 仅打包 JS
 npm run sea       # 仅构建 SEA 可执行文件
 ```
@@ -34,7 +34,7 @@ npm run sea       # 仅构建 SEA 可执行文件
 通过参数 `--mcp-server` 即可启动
 
 ```bash
-./pug.exe --mcp-server
+./pug-cli.exe --mcp-server
 ```
 
 ### 在 VS Code 中配置

@@ -82,13 +82,13 @@ jobs:
       - name: Rename SEA binary
         shell: bash
         run: |
-          mv dist/pug${{ matrix.ext }} dist/pug-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}
+          mv dist/pug-cli${{ matrix.ext }} dist/pug-cli-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}
 
       - name: Stage SEA binary
         shell: bash
         run: |
           mkdir -p staging
-          cp dist/pug-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }} staging/
+          cp dist/pug-cli-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }} staging/
 
       - uses: actions/upload-artifact@v7
         with:
@@ -125,15 +125,15 @@ jobs:
 
           # JS Bundle
           mkdir -p "JS Bundle"
-          mv pug-cli-bundled.js "JS Bundle/" 2>/dev/null || true
+          mv pug-cli-bundled.js "bundle/" 2>/dev/null || true
 
           # pug-cli binaries
           mkdir -p pug-cli
           for f in \
-            pug-linux-x64 \
-            pug-win-x64.exe \
-            pug-darwin-arm64; do
-            [ -f "$f" ] && mv "$f" pug-cli/
+            pug-cli-linux-x64 \
+            pug-cli-win-x64.exe \
+            pug-cli-darwin-arm64; do
+            [ -f "$f" ] && mv "$f" binary/
           done
 
       - name: Generate SHA256SUMS
