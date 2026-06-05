@@ -208,7 +208,7 @@ function printUsage() {
 }
 
 function printVersion() {
-  var pkg = require('./package.json');
+  var pkg = require('../package.json');
   var pugPkg = require('pug/package.json');
   console.log('pug-cli v' + pkg.version + ' (pug v' + pugPkg.version + ')');
 }

@@ -37,7 +37,7 @@ async function main() {
   console.log('Bundling pug-cli...');
 
   const result = await esbuild.build({
-    entryPoints: [path.resolve(__dirname, '..', 'cli.js')],
+    entryPoints: [path.resolve(__dirname, '..', 'src', 'cli.js')],
     bundle: true,
     platform: 'node',
     target: ['node20'],

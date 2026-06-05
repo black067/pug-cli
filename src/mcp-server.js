@@ -254,7 +254,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         'Compile one or more Pug template files on disk to HTML.',
         'Accepts: a single file path, an array of file paths, glob patterns (e.g. "src/**/*.pug"), or directory paths (auto-globs **/*.pug).',
         'Use optional "output" to write results to disk; otherwise returns a { filePath: html } dictionary.',
-        'Do NOT pass Pug source code here — use to_html for inline source strings.',,
+        'Do NOT pass Pug source code here — use to_html for inline source strings.,',
       ].join(' '),
       inputSchema: {
         type: 'object',

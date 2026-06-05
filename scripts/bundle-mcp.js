@@ -32,7 +32,7 @@ async function main() {
   console.log('Bundling pug-mcp...');
 
   const result = await esbuild.build({
-    entryPoints: [path.resolve(__dirname, '..', 'mcp-server.js')],
+    entryPoints: [path.resolve(__dirname, '..', 'src', 'mcp-server.js')],
     bundle: true,
     platform: 'node',
     target: ['node20'],

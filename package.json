@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "Standalone CLI tool for Pug template engine",
   "type": "commonjs",
-  "main": "cli.js",
+  "main": "src/cli.js",
   "bin": {
-    "pug": "cli.js",
-    "pug-mcp": "mcp-server.js"
+    "pug": "src/cli.js",
+    "pug-mcp": "src/mcp-server.js"
   },
   "scripts": {
     "bundle": "node scripts/bundle.js",
