@@ -64,6 +64,100 @@ function autoDetectDimensions(htmlString) {
 }
 
 // ============================================================
+// Emoji → SVG image support
+// ============================================================
+
+/**
+ * Regex to match emoji characters that default to color presentation.
+ * Uses \p{Emoji_Presentation} which excludes UI symbols like ◀ and ⚔
+ * that are used as styled icons (colored via CSS).
+ * Includes ZWJ sequences like 👨‍👩‍👧‍👦.
+ * Uses Unicode property escape (Node 18+).
+ */
+const EMOJI_REGEX = /\p{Emoji_Presentation}(?:[\u200d\uFE0F]\p{Emoji_Presentation})*/gu;
+
+/**
+ * Convert an emoji character to its Twemoji-style hex codepoint string.
+ *   '👑' → '1f451'
+ *   '🇨🇳' → '1f1e8-1f1f3'
+ */
+function emojiToCodePoint(emoji) {
+  return [...emoji].map(function (ch) {
+    return ch.codePointAt(0).toString(16);
+  }).join('-');
+}
+
+/**
+ * In-memory cache for fetched emoji SVGs keyed by codepoint.
+ * Persists across multiple htmlToSvg() calls within the same process.
+ */
+var graphemeCache = {};
+
+/**
+ * Fetch a single emoji SVG from Twemoji CDN, return as base64 data URI.
+ * Returns null on any failure (network, CDN issue, etc.)
+ */
+async function fetchEmojiSvg(emoji) {
+  var cp = emojiToCodePoint(emoji);
+  if (graphemeCache[cp]) return graphemeCache[cp];
+
+  var url = 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/' + cp + '.svg';
+  try {
+    var res = await fetch(url);
+    if (!res.ok) return null;
+    var svgText = await res.text();
+    var base64 = Buffer.from(svgText).toString('base64');
+    var dataUri = 'data:image/svg+xml;base64,' + base64;
+    graphemeCache[cp] = dataUri;
+    return dataUri;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Scan HTML string for emoji characters and build a graphemeImages map.
+ * Fetches emoji SVGs from Twemoji CDN, converts to base64 data URIs.
+ * Returns an empty object if no emoji found or all fetches failed.
+ *
+ * @param {string} htmlString - Raw HTML source
+ * @returns {Promise<Record<string, string>>} Map of emoji char → data URI
+ */
+async function buildGraphemeImages(htmlString) {
+  var matches = htmlString.match(EMOJI_REGEX);
+  if (!matches || matches.length === 0) return {};
+
+  var unique = [];
+  var seen = Object.create(null);
+  for (var i = 0; i < matches.length; i++) {
+    var m = matches[i];
+    if (!seen[m]) {
+      seen[m] = true;
+      unique.push(m);
+    }
+  }
+
+  if (unique.length === 0) return {};
+
+  // Wait for all fetches in parallel
+  var results = await Promise.allSettled(
+    unique.map(async function (emoji) {
+      var dataUri = await fetchEmojiSvg(emoji);
+      return { emoji: emoji, dataUri: dataUri };
+    })
+  );
+
+  var map = {};
+  for (var r = 0; r < results.length; r++) {
+    var res = results[r];
+    if (res.status === 'fulfilled' && res.value.dataUri) {
+      map[res.value.emoji] = res.value.dataUri;
+    }
+  }
+  return map;
+}
+
+// ============================================================
 // Public API
 // ============================================================
 
@@ -77,6 +171,7 @@ function autoDetectDimensions(htmlString) {
  * @param {Array} [opts.fonts] - Override fonts entirely (skips collectFonts)
  * @param {string[]} [opts.extraFonts] - Extra font paths to load
  * @param {boolean} [opts.debug=false] - Draw bounding boxes for debugging
+ * @param {boolean} [opts.emoji=true] - Enable color emoji via Twemoji (set false to skip)
  * @returns {Promise<string>} SVG string
  */
 async function htmlToSvg(htmlString, opts) {
@@ -103,14 +198,27 @@ async function htmlToSvg(htmlString, opts) {
     throw new Error('Failed to parse HTML for SVG conversion: ' + err.message);
   }
 
+  // Build emoji graphemeImages (color emoji via Twemoji CDN)
+  var satoriOpts = {
+    width: width,
+    height: height,
+    fonts: fonts,
+    debug: !!opts.debug,
+  };
+  if (opts.emoji !== false) {
+    try {
+      var graphemeImages = await buildGraphemeImages(htmlString);
+      if (Object.keys(graphemeImages).length > 0) {
+        satoriOpts.graphemeImages = graphemeImages;
+      }
+    } catch (_) {
+      // Emoji fetching failed silently — proceed with monochrome fallback
+    }
+  }
+
   // Render to SVG
   try {
-    const svg = await satori(jsx, {
-      width: width,
-      height: height,
-      fonts: fonts,
-      debug: !!opts.debug,
-    });
+    const svg = await satori(jsx, satoriOpts);
     return svg;
   } catch (err) {
     // Enhance Satori errors with context

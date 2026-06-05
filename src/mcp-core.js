@@ -26,188 +26,224 @@ function buildPugOptions(opts) {
   };
 }
 
-// ============================================================
-// Tool handlers
-// ============================================================
-
-function handlePugToHtml(args) {
-  const fn = pug.compile(args.source, buildPugOptions(args));
-  const html = fn(args.locals || {});
-  return { content: [{ type: 'text', text: html }] };
-}
-
-function handlePugToJs(args) {
-  const opts = buildPugOptions(args);
-  opts.module = !!args.module;
-  if (args.name) opts.name = args.name;
-  const js = pug.compileClient(args.source, opts);
-  return { content: [{ type: 'text', text: js }] };
-}
-
-function handlePugValidate(args) {
-  pug.compile(args.source, buildPugOptions(args));
-  return { content: [{ type: 'text', text: 'Pug syntax is valid.' }] };
-}
-
-function handleToPug(args) {
-  const pugSource = markupToPug.markupToPug(args.source);
-  return { content: [{ type: 'text', text: pugSource }] };
-}
-
-async function handleHtmlToSvg(args) {
-  let htmlSource;
-
-  if (args.type === 'file') {
-    // Read file from disk, auto-detect type by content
-    var resolved = path.resolve(args.source);
-    if (!fs.existsSync(resolved)) {
-      throw new Error('File not found: ' + args.source);
-    }
-    var fileSource = fs.readFileSync(resolved, 'utf8');
-    // Reuse markupToPug.detectMode to check if content is HTML by inspecting content
-    if (markupToPug.detectMode(fileSource) === 'html') {
-      // Content looks like HTML → treat as raw HTML
-      htmlSource = fileSource;
-    } else {
-      // Content does not look like HTML → treat as Pug template
-      try {
-        var fn = pug.compile(fileSource, buildPugOptions({ ...args, filename: resolved }));
-        htmlSource = fn(args.locals || {});
-      } catch (err) {
-        throw new Error('Pug compilation failed: ' + err.message);
-      }
-    }
-  } else if (args.type === 'pug') {
-    // Compile Pug to HTML first
-    try {
-      const fn = pug.compile(args.source, buildPugOptions(args));
-      htmlSource = fn(args.locals || {});
-    } catch (err) {
-      throw new Error('Pug compilation failed: ' + err.message);
-    }
-  } else {
-    // Treat as raw HTML
-    htmlSource = args.source;
-  }
-
-  // Parse comma-separated font paths
-  const extraFonts = args.fontPath
-    ? args.fontPath.split(',').map(function (p) { return p.trim(); }).filter(Boolean)
-    : [];
-
-  const svg = await htmlToSvg(htmlSource, {
-    width: args.width || 800,
-    height: args.height || 600,
-    extraFonts: extraFonts,
-    debug: false,
-  });
-
-  return { content: [{ type: 'text', text: svg }] };
-}
-
 /** Check if a string contains glob wildcard characters */
 function hasGlob(str) {
   return /[*?[\]]/.test(str);
 }
 
-/** Expand a single input entry into a list of resolved file paths */
+/**
+ * Detect what kind of input a source string represents.
+ * @returns {'file'|'directory'|'glob'|'inline'}
+ */
+function detectInputType(str) {
+  var resolved = path.resolve(str);
+
+  if (fs.existsSync(resolved)) {
+    var stat = fs.statSync(resolved);
+    if (stat.isFile()) return 'file';
+    if (stat.isDirectory()) return 'directory';
+  }
+
+  if (hasGlob(str)) return 'glob';
+
+  return 'inline';
+}
+
+/**
+ * Expand a single input entry into tasks: { type, path?, source? }[].
+ * Inline entries carry the raw source; file entries carry the resolved path.
+ */
 function expandInput(entry) {
-  var resolvedAbs = path.resolve(entry);
+  var type = detectInputType(entry);
 
-  // 1. Existing file → direct hit
-  if (fs.existsSync(resolvedAbs) && fs.statSync(resolvedAbs).isFile()) {
-    return [resolvedAbs];
+  if (type === 'file') {
+    return [{ type: 'file', path: path.resolve(entry) }];
   }
 
-  // 2. Existing directory → blob **/*.pug
-  if (fs.existsSync(resolvedAbs) && fs.statSync(resolvedAbs).isDirectory()) {
-    return fs.globSync(path.join(resolvedAbs, '**/*.pug'));
+  if (type === 'directory') {
+    var dirPath = path.resolve(entry);
+    var files = fs.globSync(path.join(dirPath, '**/*.pug'));
+    return files.map(function (f) { return { type: 'file', path: path.resolve(f) }; });
   }
 
-  // 3. Contains glob metacharacters → expand via glob
-  if (hasGlob(entry)) {
+  if (type === 'glob') {
     var matches = fs.globSync(entry);
     if (matches.length === 0) {
       throw new Error('No files matched glob: ' + entry);
     }
-    return matches.map(function (m) { return path.resolve(m); });
+    return matches.map(function (f) { return { type: 'file', path: path.resolve(f) }; });
   }
 
-  // 4. Not found and not a glob → error
-  throw new Error('File not found: ' + entry);
+  // inline
+  return [{ type: 'inline', source: entry }];
 }
 
-function handlePugRender(args) {
-  // Normalize input: accept string or array
-  var raw = args.input;
-  if (typeof raw === 'string') raw = [raw];
-  if (!Array.isArray(raw) || raw.length === 0) {
-    throw new Error('input must be a non-empty file path, glob pattern, directory, or array of these');
-  }
+// ============================================================
+// Tool handlers
+// ============================================================
 
-  // Expand all entries, deduplicate, sort
+function handlePugToHtml(args) {
+  var raw = Array.isArray(args.source) ? args.source : [args.source];
+
+  // Expand all entries, deduplicate files
   var seen = {};
-  var files = [];
+  var tasks = [];
   for (var i = 0; i < raw.length; i++) {
     var expanded = expandInput(raw[i]);
     for (var j = 0; j < expanded.length; j++) {
-      if (!seen[expanded[j]]) {
-        seen[expanded[j]] = true;
-        files.push(expanded[j]);
+      var task = expanded[j];
+      if (task.type === 'file') {
+        if (seen[task.path]) continue;
+        seen[task.path] = true;
       }
+      tasks.push(task);
     }
   }
-  files.sort();
 
-  // Compile each file
-  var results = {};
-  var failures = [];
-  for (var k = 0; k < files.length; k++) {
-    var filePath = files[k];
+  // Compile each task
+  var results = [];   // [{ key, html }]
+  var errors = [];
+  var inlineSeq = 0;
+
+  for (var k = 0; k < tasks.length; k++) {
+    var t = tasks[k];
     try {
-      var source = fs.readFileSync(filePath, 'utf8');
-      var fn = pug.compile(source, buildPugOptions({ ...args, filename: filePath }));
+      var source, filename;
+      if (t.type === 'file') {
+        source = fs.readFileSync(t.path, 'utf8');
+        filename = t.path;
+      } else {
+        source = t.source;
+        filename = args.filename;
+      }
+
+      var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype });
+      var fn = pug.compile(source, opts);
       var html = fn(args.locals || {});
-      results[filePath] = html;
+
+      var key = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
+      results.push({ key: key, html: html });
     } catch (err) {
-      failures.push({ input: filePath, error: err.message || String(err) });
+      var errKey = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
+      errors.push({ input: errKey, error: err.message || String(err) });
     }
   }
 
-  // Output mode: write to disk
+  // All failed
+  if (results.length === 0 && errors.length > 0) {
+    return {
+      content: [{ type: 'text', text: 'All compilations failed:\n' + JSON.stringify(errors, null, 2) }],
+      isError: true,
+    };
+  }
+
+  // --- Output: write to disk ---
   if (args.output) {
     var outDir = path.resolve(args.output);
     fs.mkdirSync(outDir, { recursive: true });
     var written = [];
     var writeErrors = [];
-    var fileKeys = Object.keys(results);
-    for (var w = 0; w < fileKeys.length; w++) {
-      var inPath = fileKeys[w];
+    var nameCounts = {};  // basename → count, for collision avoidance
+
+    for (var wi = 0; wi < results.length; wi++) {
+      var r = results[wi];
       try {
-        var basename = path.basename(inPath, path.extname(inPath)) + '.html';
+        var basename = (r.key.indexOf('(inline:') === 0)
+          ? 'output.html'
+          : path.basename(r.key, path.extname(r.key)) + '.html';
+
+        var cnt = nameCounts[basename] || 0;
+        nameCounts[basename] = cnt + 1;
+        if (cnt > 0) {
+          var ext = path.extname(basename);
+          var stem = path.basename(basename, ext);
+          basename = stem + '-' + cnt + ext;
+        }
+
         var outPath = path.join(outDir, basename);
-        fs.writeFileSync(outPath, results[inPath], 'utf8');
-        written.push({ input: inPath, output: outPath });
+        fs.writeFileSync(outPath, r.html, 'utf8');
+        written.push({ input: r.key, output: outPath });
       } catch (err) {
-        writeErrors.push({ input: inPath, error: err.message || String(err) });
+        writeErrors.push({ input: r.key, error: err.message || String(err) });
       }
     }
+
     var summary = {
-      success: written.length,
-      failed: failures.length + writeErrors.length,
+      written: written.length,
+      failed: errors.length + writeErrors.length,
       files: written,
     };
-    if (failures.length > 0) summary.compileErrors = failures;
-    if (writeErrors.length > 0) summary.writeErrors = writeErrors;
+    if (errors.length) summary.compileErrors = errors;
+    if (writeErrors.length) summary.writeErrors = writeErrors;
     return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
   }
 
-  // Inline mode: return dictionary
-  var msg = JSON.stringify(results, null, 2);
-  if (failures.length > 0) {
-    msg += '\n\n// Compile errors:\n' + JSON.stringify(failures, null, 2);
+  // --- Output: return inline ---
+  // Single result → raw HTML
+  if (results.length === 1 && errors.length === 0) {
+    return { content: [{ type: 'text', text: results[0].html }] };
+  }
+
+  // Multiple results → dict
+  var dict = {};
+  for (var di = 0; di < results.length; di++) {
+    dict[results[di].key] = results[di].html;
+  }
+  var msg = JSON.stringify(dict, null, 2);
+  if (errors.length) {
+    msg += '\n\n// Compile errors:\n' + JSON.stringify(errors, null, 2);
   }
   return { content: [{ type: 'text', text: msg }] };
+}
+
+function handlePugToJs(args) {
+  var source = args.source;
+  var filename = args.filename;
+
+  // Auto-detect: if source is an existing file path, read it
+  var resolved = path.resolve(source);
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+    source = fs.readFileSync(resolved, 'utf8');
+    filename = filename || resolved;
+  }
+
+  var opts = buildPugOptions({ filename: filename });
+  opts.module = !!args.module;
+  if (args.name) opts.name = args.name;
+  var js = pug.compileClient(source, opts);
+  return { content: [{ type: 'text', text: js }] };
+}
+
+function handleHtmlToPug(args) {
+  var source = args.source;
+
+  // Auto-detect: if source is an existing file path, read it
+  var resolved = path.resolve(source);
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+    source = fs.readFileSync(resolved, 'utf8');
+  }
+
+  var pugSource = markupToPug.markupToPug(source);
+  return { content: [{ type: 'text', text: pugSource }] };
+}
+
+async function handleHtmlToSvg(args) {
+  var htmlSource = args.source;
+
+  // Auto-detect: if source is an existing file path, read it
+  var resolved = path.resolve(htmlSource);
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+    htmlSource = fs.readFileSync(resolved, 'utf8');
+  }
+
+  var svg = await htmlToSvg(htmlSource, {
+    width: args.width,
+    height: args.height,
+    extraFonts: args.fonts || [],
+    debug: !!args.debug,
+  });
+
+  return { content: [{ type: 'text', text: svg }] };
 }
 
 // ============================================================
@@ -215,186 +251,109 @@ function handlePugRender(args) {
 // ============================================================
 
 function startMcpServer() {
-  const server = new Server(
+  var server = new Server(
     { name: 'pug-mcp', version: '1.0.0' },
     {
       capabilities: { tools: {} },
       instructions: [
-        '## pug-mcp — Pug Template Compilation Service',
+        '## pug-mcp — Pug Template Tools',
         '',
-        'This server compiles Pug templates via five tools:',
+        '- **pug_to_html**: Compile Pug → HTML. Auto-detects inline code vs file/glob/directory. Use `output` to write files.',
+        '- **pug_to_js**: Compile Pug → client-side JS function. Use `module: true` for Node.js.',
+        '- **html_to_pug**: Convert HTML/XML → Pug syntax.',
+        '- **html_to_svg**: Render HTML → SVG (Satori engine, Flexbox CSS).',
         '',
-        '- **validate**: Use to quickly check Pug syntax without generating output. Ideal for "validate → fix → re-validate" loops. Much faster than compiling to HTML just to check for errors.',
-        '- **to_html**: Use when the user provides Pug source code as a string and wants HTML output. Best for inline templates or code blocks.',
-        '- **to_js**: Use when the user wants a client-side JavaScript template function (e.g. for browser use). Only use when explicitly asked for JS/client-side output.',
-        '- **render**: Compile one or more .pug files on disk to HTML. Accepts single file path, array of file paths, glob patterns (e.g. "folder/*.pug"), or directory paths (auto-globs **/*.pug). Supports optional output directory for writing results to disk.',
-        '- **to_pug**: Convert HTML or XML source string to Pug template source code. Auto-detects mode from content: if source contains <!DOCTYPE html or <html tag → HTML mode (with id/class shorthand), otherwise → XML mode.',
-        '- **html_to_svg**: Convert HTML, Pug, or a file on disk to SVG via the Satori engine. Supports Flexbox for automatic layout — Agent can write natural HTML without precise pixel positioning. Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Use fontPath param for additional fonts. Use type="file" to read from a file path.',
-        '',
-        '## Parameter guidance',
-        '',
-        '- `source` (required for to_html / to_js / to_pug / html_to_svg): The complete Pug/HTML/XML template source code, or a file path when type="file".',
-        '- `input` (required for render): A single file path, an array of file paths, glob patterns (e.g. "src/**/*.pug"), or directory paths (auto-globbed). Do NOT pass Pug source code.',
-        '- `output` (optional for render): Directory to write compiled HTML files. When omitted, returns a dictionary mapping file paths to HTML content.',
-        '- `pretty`: Set to true for human-readable HTML with indentation and line breaks. Defaults to false (compact output).',
-        '- `locals`: A JSON object of variables passed to the template. Example: { "title": "Hello", "items": ["a", "b"] }. In Pug, these become local variables like `title` and `items`.',
-        '- `filename`: Virtual filename for error stack traces and basedir resolution. When omitted, defaults to "input.pug" with cwd as basedir.',
-        '- `name` (to_js only): The JavaScript function name. Defaults to "template".',
-        '- `module` (to_js only): Set to true to wrap output in CommonJS module.exports.',
-        '- `fontPath` (html_to_svg only): Comma-separated paths to additional TTF/OTF/WOFF font files.',
-        '',
-        '## Workflow',
-        '',
-        '1. User provides Pug code → validate first with validate, then compile with to_html (or render for files).',
-        '2. Validation fails → fix the syntax error and re-validate. Do NOT blindly re-compile without fixing.',
-        '3. User asks for a client-side JS template → use to_js.',
-        '4. If the template uses `extends` or `include`, ensure `filename` reflects the actual file path so relative resolution works.',
-        '5. User provides HTML/XML to convert to Pug → use to_pug.',
-        '6. User wants to convert HTML/Pug to SVG image → use html_to_svg. Write HTML with Flexbox for automatic layout, or use type="file" to convert a file on disk.',
+        '### Tips',
+        '- Pug → SVG: compile with pug_to_html first, then pass the HTML to html_to_svg.',
+        '- Use `pretty: true` for readable HTML output.',
+        '- Pass template variables via `locals`: {"title": "Hello"}.',
+        '- For Pug extends/include, set `filename` to the template file path.',
+        '- Extra fonts for SVG: `fonts`: ["path/to/font.ttf"].',
       ].join('\n'),
     }
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-      {
-        name: 'validate',
-        description: [
-          'Validate Pug template syntax without generating output.',
-          'Use this FIRST whenever the user provides Pug code — it is lightweight and catches errors quickly.',
-          'On success returns "Pug syntax is valid."; on failure returns the compile error with line number.',
-          'After validation passes, use to_html or render to generate output.',
-        ].join(' '),
-        inputSchema: {
-          type: 'object',
-          properties: {
-            source: { type: 'string', description: 'Pug template source code to validate.' },
-            filename: { type: 'string', description: 'Virtual filename for error stack traces and basedir.' },
-          },
-          required: ['source'],
-        },
-      },
-      {
-        name: 'to_html',
-        description: [
-          'Compile a Pug template source string to HTML.',
-          'Use this when the user provides inline Pug code (NOT a file path).',
-          'Set pretty: true for readable indented output.',
-          'Pass template variables as a JSON object via locals (e.g. {"title": "Hello"}).',
-        ].join(' '),
-        inputSchema: {
-          type: 'object',
-          properties: {
-            source: { type: 'string', description: 'Pug template source code. Do NOT pass a file path here — use render for files.' },
-            pretty: { type: 'boolean', description: 'Pretty-print HTML output with indentation and line breaks.' },
-            locals: { type: 'object', description: 'Template variables as a JSON object. Keys become local variables in Pug.' },
-            filename: { type: 'string', description: 'Virtual filename for error stack traces and basedir. Required for extends/include to resolve correctly.' },
-          },
-          required: ['source'],
-        },
-      },
-      {
-        name: 'to_js',
-        description: [
-          'Compile a Pug template source string to a client-side JavaScript function.',
-          'Only use when the user explicitly wants a JS template function (e.g. for browser use).',
-          'For HTML output, use to_html instead.',
-        ].join(' '),
-        inputSchema: {
-          type: 'object',
-          properties: {
-            source: { type: 'string', description: 'Pug template source code.' },
-            name: { type: 'string', description: 'JavaScript function name. Defaults to "template".' },
-            module: { type: 'boolean', description: 'Wrap output in CommonJS module.exports for Node.js use.' },
-            filename: { type: 'string', description: 'Virtual filename for error reporting.' },
-          },
-          required: ['source'],
-        },
-      },
-      {
-        name: 'render',
-        description: [
-          'Compile one or more Pug template files on disk to HTML.',
-          'Accepts: a single file path, an array of file paths, glob patterns (e.g. "src/**/*.pug"), or directory paths (auto-globs **/*.pug).',
-          'Use optional "output" to write results to disk; otherwise returns a { filePath: html } dictionary.',
-          'Do NOT pass Pug source code here — use to_html for inline source strings.,',
-        ].join(' '),
-        inputSchema: {
-          type: 'object',
-          properties: {
-            input: {
-              oneOf: [
-                { type: 'string', description: 'A single file path, glob pattern, or directory.' },
-                { type: 'array', items: { type: 'string' }, description: 'Array of file paths, glob patterns, or directories.' },
-              ],
-              description: 'One or more file paths, glob patterns (e.g. "src/**/*.pug"), or directory paths (auto-globs **/*.pug).',
+  server.setRequestHandler(ListToolsRequestSchema, async function () {
+    return {
+      tools: [
+        {
+          name: 'pug_to_html',
+          description: 'Compile Pug to HTML. Auto-detects input: inline Pug source, .pug file path, glob (e.g. "src/**/*.pug"), or directory. Single output returns raw HTML; multiple outputs return a {path: html} dict. Use `output` to write files to disk instead.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              source: {
+                oneOf: [
+                  { type: 'string', description: 'Pug source code, file path, glob pattern, or directory.' },
+                  { type: 'array', items: { type: 'string' }, description: 'Array of file paths, globs, or directories.' },
+                ],
+                description: 'Pug source code (inline), file path(s), glob pattern(s), or directory path(s). Auto-detected.',
+              },
+              output: { type: 'string', description: 'Directory to write compiled HTML files. When omitted, results are returned inline.' },
+              pretty: { type: 'boolean', description: 'Pretty-print HTML output with indentation and line breaks.' },
+              locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },
+              filename: { type: 'string', description: 'Virtual filename for error traces and basedir. Required for extends/include resolution with inline source.' },
             },
-            output: { type: 'string', description: 'Optional output directory. When specified, compiled HTML files are written here. When omitted, returns a dictionary mapping input paths to HTML content.' },
-            pretty: { type: 'boolean', description: 'Pretty-print HTML output with indentation and line breaks.' },
-            locals: { type: 'object', description: 'Template variables as a JSON object. Keys become local variables in Pug.' },
+            required: ['source'],
           },
-          required: ['input'],
         },
-      },
-      {
-        name: 'to_pug',
-        description: [
-          'Convert HTML or XML source string to Pug template source code.',
-          'Auto-detects mode from content:',
-          '* Contains <!DOCTYPE html or <html tag → HTML mode (with #id, .class shorthand, boolean attributes)',
-          '* Otherwise → XML mode (preserves namespaces, CDATA, XML declarations)',
-        ].join(' '),
-        inputSchema: {
-          type: 'object',
-          properties: {
-            source: { type: 'string', description: 'HTML or XML source code to convert to Pug.' },
+        {
+          name: 'pug_to_js',
+          description: 'Compile a Pug template to a client-side JavaScript function. Set `module: true` for CommonJS module.exports wrapping.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              source: { type: 'string', description: 'Pug template source code or file path.' },
+              name: { type: 'string', description: 'JavaScript function name. Defaults to "template".' },
+              module: { type: 'boolean', description: 'Wrap output in CommonJS module.exports for Node.js use.' },
+              filename: { type: 'string', description: 'Virtual filename for error traces and basedir.' },
+            },
+            required: ['source'],
           },
-          required: ['source'],
         },
-      },
-      {
-        name: 'html_to_svg',
-        description: [
-          'Convert HTML or Pug template to SVG using the Satori engine.',
-          'Satori supports Flexbox layout for automatic positioning — no pixel-perfect calculations needed.',
-          'Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Use fontPath for additional fonts.',
-          'CSS support includes: flexbox, colors, borders, shadows, transforms, gradients, text styling, and more.',
-          'Limitations: no CSS Grid, no calc(), no TTC/WOFF2 fonts.',
-          'Input type "html" (default) treats source as raw HTML. Type "pug" compiles Pug → HTML → SVG. Type "file" reads a file path from source and auto-detects by content (HTML markers → HTML, otherwise → Pug).',
-        ].join(' '),
-        inputSchema: {
-          type: 'object',
-          properties: {
-            source: { type: 'string', description: 'HTML source code or Pug template source code.' },
-            type: { type: 'string', enum: ['html', 'pug', 'file'], description: 'Input type: "html" for raw HTML (default), "pug" for Pug template string, "file" to read from a file path (auto-detects HTML vs Pug by content inspection).' },
-            width: { type: 'number', description: 'SVG canvas width in pixels. Default: 800.' },
-            height: { type: 'number', description: 'SVG canvas height in pixels. Default: 600.' },
-            fontPath: { type: 'string', description: 'Comma-separated paths to additional TTF/OTF/WOFF font files. Already bundled: Inter (Latin) + Noto Sans SC (CJK).' },
-            locals: { type: 'object', description: 'Template variables as a JSON object. Only used when type is "pug".' },
-            pretty: { type: 'boolean', description: 'Whether to pretty-print Pug intermediate output. Only used when type is "pug".' },
+        {
+          name: 'html_to_pug',
+          description: 'Convert HTML or XML to Pug syntax. Auto-detects HTML mode (#id, .class shorthand) vs XML mode (preserves namespaces, CDATA).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              source: { type: 'string', description: 'HTML or XML source code, or a file path to read.' },
+            },
+            required: ['source'],
           },
-          required: ['source'],
         },
-      },
-    ],
-  }));
+        {
+          name: 'html_to_svg',
+          description: 'Render HTML to SVG via Satori (supports Flexbox CSS). Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Width/height auto-detected from inline CSS if omitted. For Pug input, compile with pug_to_html first.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              source: { type: 'string', description: 'HTML source code or a file path to read.' },
+              width: { type: 'number', description: 'SVG canvas width in pixels. Auto-detected from content if omitted.' },
+              height: { type: 'number', description: 'SVG canvas height in pixels. Auto-detected from content if omitted.' },
+              fonts: { type: 'array', items: { type: 'string' }, description: 'Extra font file paths (TTF/OTF/WOFF). Built-in: Inter + Noto Sans SC.' },
+              debug: { type: 'boolean', description: 'Draw bounding boxes for layout debugging.' },
+            },
+            required: ['source'],
+          },
+        },
+      ],
+    };
+  });
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
+  server.setRequestHandler(CallToolRequestSchema, async function (request) {
+    var name = request.params.name;
+    var args = request.params.arguments || {};
     try {
       switch (name) {
-        case 'validate':
-          return handlePugValidate(args || {});
-        case 'to_html':
-          return handlePugToHtml(args || {});
-        case 'to_js':
-          return handlePugToJs(args || {});
-        case 'render':
-          return handlePugRender(args || {});
-        case 'to_pug':
-          return handleToPug(args || {});
+        case 'pug_to_html':
+          return handlePugToHtml(args);
+        case 'pug_to_js':
+          return handlePugToJs(args);
+        case 'html_to_pug':
+          return handleHtmlToPug(args);
         case 'html_to_svg':
-          return await handleHtmlToSvg(args || {});
+          return await handleHtmlToSvg(args);
         default:
           throw new Error('Unknown tool: ' + name);
       }
@@ -406,7 +365,7 @@ function startMcpServer() {
     }
   });
 
-  const transport = new StdioServerTransport();
+  var transport = new StdioServerTransport();
   server.connect(transport);
 }
 
