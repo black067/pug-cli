@@ -1,5 +1,5 @@
 doctype html
-html(lang="zh-CN")
+html(lang="zh-CN", style="display: flex; flex-direction: column;")
   head
     style
       include ../styles/main.css
@@ -42,7 +42,7 @@ html(lang="zh-CN")
       div(style="display: flex; align-items: center; gap: 10px; padding: 10px 16px; background-color: "+rowBg+";")
         +rankBadge(rank)
         +avatar(36, '#6B7280')
-        div(style="flex: 1; min-width: 0;")
+        div(style="flex: 1; min-width: 0; display: flex; flex-direction: column;")
           div(style="display: flex; align-items: center; gap: 6px;")
             span.text-primary(style="font-size: 13px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;") #{name}
             if isMe
@@ -65,10 +65,10 @@ html(lang="zh-CN")
     nav.nav-bg(style="display: flex; border-bottom: 1px solid #E5E7EB;")
       each tab, i in tabs
         - var isActive = i === activeTab
-        div(style="flex: 1; text-align: center; padding: 10px 0; cursor: pointer; position: relative;")
+        div(style="flex: 1; text-align: center; padding: 10px 0; cursor: pointer; position: relative; display: flex; flex-direction: column; align-items: center;")
           span(class=isActive ? 'nav-active' : 'nav-inactive' style="font-size: 14px; font-weight: "+ (isActive ? 'bold' : 'normal') + ";") #{tab}
           if isActive
-            div.nav-indicator(style="position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 24px; height: 3px; border-radius: 2px;")
+            div.nav-indicator(style="position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 24px; height: 3px; border-radius: 2px; display: flex;")
 
     //- ═══════════════════════════════════════════
     //- 主内容区（可滚动）
@@ -76,7 +76,7 @@ html(lang="zh-CN")
     main(style="flex: 1; overflow: hidden; display: flex; flex-direction: column;")
 
       //- ── Top 3 领奖台 ──────────────────────────
-      div(style="padding: 16px 16px 8px 16px;")
+      div(style="padding: 16px 16px 8px 16px; display: flex; flex-direction: column;")
         div(style="display: flex; align-items: flex-end; justify-content: center; gap: 12px;")
           //- 第2名
           div(style="display: flex; flex-direction: column; align-items: center; gap: 6px;")
@@ -111,7 +111,7 @@ html(lang="zh-CN")
               span(style="font-size: 11px; font-weight: bold; color: #D97706;") NO.3
 
       //- ── 分割线 ────────────────────────────────
-      div.divider(style="margin: 4px 16px;")
+      hr.divider(style="margin: 4px 16px; border: none; border-bottom: 1px solid #E5E7EB;")
 
       //- ── 排名列表表头 ──────────────────────────
       div(style="display: flex; align-items: center; padding: 6px 16px; gap: 10px;")
@@ -120,17 +120,17 @@ html(lang="zh-CN")
         span.text-tertiary(style="font-size: 11px;") #{scoreLabel}
 
       //- ── 排名列表 4-10 ────────────────────────
-      div(style="flex: 1; overflow: hidden;")
+      div(style="flex: 1; overflow: hidden; display: flex; flex-direction: column;")
         each item in rankList
           +rankRow(item.rank, item.name, item.level, item.score, false)
 
     //- ═══════════════════════════════════════════
     //- 底部固定区
     //- ═══════════════════════════════════════════
-    footer(style="flex-shrink: 0;")
+    footer(style="flex-shrink: 0; display: flex; flex-direction: column;")
       //- 我的排名
-      div.divider
-      div(style="padding: 0;")
+      hr.divider(style="border: none; border-bottom: 1px solid #E5E7EB;")
+      div(style="padding: 0; display: flex; flex-direction: column;")
         +rankRow(myRank.rank, myRank.name, myRank.level, myRank.score, true)
 
       //- 底部按钮栏
