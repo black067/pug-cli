@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const pug = require('pug');
 const markupToPug = require('./markup2pug');
+const { htmlToSvg } = require('./html2svg');
 
 // ============================================================
 // Constants
@@ -102,6 +103,46 @@ function compileAndWrite(filePath, opts) {
 }
 
 /**
+ * Compile one .pug file (or HTML file) to SVG and write output.
+ * For .pug files: Pug → HTML → SVG
+ * For .html files: HTML → SVG directly
+ */
+async function toSvgAndWrite(filePath, opts) {
+  const resolved = path.resolve(filePath);
+  if (!fs.existsSync(resolved)) {
+    console.error('Error: file not found: ' + filePath);
+    return false;
+  }
+
+  try {
+    let source = fs.readFileSync(resolved, 'utf8');
+    let htmlSource;
+
+    // If .pug file, compile to HTML first
+    if (filePath.endsWith('.pug')) {
+      const fn = pug.compile(source, buildPugOptions(resolved, opts));
+      htmlSource = fn(opts.locals || {});
+    } else {
+      // Treat as raw HTML
+      htmlSource = source;
+    }
+
+    const svg = await htmlToSvg(htmlSource, {
+      width: opts.svgWidth || 800,
+      height: opts.svgHeight || 600,
+      extraFonts: opts.fontPaths || [],
+      debug: false,
+    });
+
+    writeOutput(resolved, svg, opts.outDir, false, '.svg');
+    return true;
+  } catch (err) {
+    console.error('Error converting to SVG ' + filePath + ':', err.message || err);
+    return false;
+  }
+}
+
+/**
  * Reverse-convert an HTML or XML file to Pug.
  * Mode is auto-detected from file content.
  */
@@ -132,10 +173,18 @@ function compileStdin(opts) {
   var buf = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', function (chunk) { buf += chunk; });
-  process.stdin.on('end', function () {
+  process.stdin.on('end', async function () {
     try {
       var content;
-      if (opts.client) {
+      if (opts.toSvg) {
+        // SVG mode: treat stdin as HTML and convert
+        content = await htmlToSvg(buf, {
+          width: opts.svgWidth || 800,
+          height: opts.svgHeight || 600,
+          extraFonts: opts.fontPaths || [],
+          debug: false,
+        });
+      } else if (opts.client) {
         var pugOpts = buildPugOptions('stdin', opts);
         pugOpts.module = !!opts.module;
         if (opts.name) pugOpts.name = opts.name;
@@ -224,6 +273,12 @@ function printUsage() {
   console.error('  -w, --watch               Watch files for changes');
   console.error('      --stdin               Read template from stdin');
   console.error('  -R, --reverse             Convert HTML/XML file to Pug (auto-detect mode)');
+  console.error('  -S, --to-svg              Convert .pug or .html to SVG (via Satori)');
+  console.error('');
+  console.error('SVG options (with --to-svg):');
+  console.error('      --width <n>           SVG canvas width (default: 800)');
+  console.error('      --height <n>          SVG canvas height (default: 600)');
+  console.error('      --font <path>         Load additional TTF/OTF/WOFF font (repeatable)');
   console.error('');
   console.error('Info:');
   console.error('  -h, --help                Display this help message');
@@ -288,6 +343,11 @@ function main() {
     stdin: false,
     watch: false,
     reverse: false,
+    toSvg: false,
+    // SVG
+    svgWidth: 800,
+    svgHeight: 600,
+    fontPaths: [],
     // Compilation (native pug options)
     pretty: false,
     compileDebug: true,
@@ -344,6 +404,26 @@ function main() {
       case '-R':
       case '--reverse':
         opts.reverse = true;
+        break;
+
+      // --- SVG conversion ---
+      case '-S':
+      case '--to-svg':
+        opts.toSvg = true;
+        break;
+      case '--width':
+        i++; if (i >= args.length) { console.error('Error: --width requires a number'); process.exit(EXIT_FAILURE); }
+        opts.svgWidth = parseInt(args[i], 10);
+        if (isNaN(opts.svgWidth) || opts.svgWidth <= 0) { console.error('Error: --width must be a positive number'); process.exit(EXIT_FAILURE); }
+        break;
+      case '--height':
+        i++; if (i >= args.length) { console.error('Error: --height requires a number'); process.exit(EXIT_FAILURE); }
+        opts.svgHeight = parseInt(args[i], 10);
+        if (isNaN(opts.svgHeight) || opts.svgHeight <= 0) { console.error('Error: --height must be a positive number'); process.exit(EXIT_FAILURE); }
+        break;
+      case '--font':
+        i++; if (i >= args.length) { console.error('Error: --font requires a file path'); process.exit(EXIT_FAILURE); }
+        opts.fontPaths.push(args[i]);
         break;
 
       // --- Compilation options (native pug) ---
@@ -457,6 +537,12 @@ function main() {
     process.exit(EXIT_FAILURE);
   }
 
+  // Handle SVG-only flags without --to-svg
+  if (!opts.toSvg && (opts.fontPaths.length > 0)) {
+    console.error('Error: --font requires --to-svg');
+    process.exit(EXIT_FAILURE);
+  }
+
   // Need files
   if (opts.files.length === 0) {
     console.error('Error: no input files (use --stdin to read from stdin)');
@@ -472,6 +558,20 @@ function main() {
   // Handle --watch
   if (opts.watch) {
     startWatch(opts.files, opts);
+    return;
+  }
+
+  // SVG mode: convert Pug/HTML → SVG
+  if (opts.toSvg) {
+    var svgOk = true;
+    var pending = opts.files.map(function (f) {
+      return toSvgAndWrite(f, opts).then(function (r) {
+        if (!r) svgOk = false;
+      });
+    });
+    Promise.all(pending).then(function () {
+      if (!svgOk) process.exit(EXIT_FAILURE);
+    });
     return;
   }
 

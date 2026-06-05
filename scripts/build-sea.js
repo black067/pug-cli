@@ -71,6 +71,11 @@ function createSeaConfig() {
     disableExperimentalSEAWarning: true,
     useSnapshot: false,
     useCodeCache: false,
+    assets: {
+      // Embed bundled fonts so they work inside the SEA binary
+      'assets/fonts/inter-regular.ttf': path.join(ASSETS, 'fonts', 'inter-regular.ttf'),
+      'assets/fonts/noto-sans-sc-regular.ttf': path.join(ASSETS, 'fonts', 'noto-sans-sc-regular.ttf'),
+    },
   };
   fs.writeFileSync(SEA_CONFIG, JSON.stringify(config, null, 2));
   console.log('SEA config created:', SEA_CONFIG);

@@ -4,6 +4,7 @@ const pug = require('pug');
 const fs = require('fs');
 const path = require('path');
 const markupToPug = require('./markup2pug');
+const { htmlToSvg } = require('./html2svg');
 const { Server } = require('@modelcontextprotocol/sdk/server');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const {
@@ -51,6 +52,37 @@ function handlePugValidate(args) {
 function handleToPug(args) {
   const pugSource = markupToPug.markupToPug(args.source);
   return { content: [{ type: 'text', text: pugSource }] };
+}
+
+async function handleHtmlToSvg(args) {
+  let htmlSource;
+
+  if (args.type === 'pug') {
+    // Compile Pug to HTML first
+    try {
+      const fn = pug.compile(args.source, buildPugOptions(args));
+      htmlSource = fn(args.locals || {});
+    } catch (err) {
+      throw new Error('Pug compilation failed: ' + err.message);
+    }
+  } else {
+    // Treat as raw HTML
+    htmlSource = args.source;
+  }
+
+  // Parse comma-separated font paths
+  const extraFonts = args.fontPath
+    ? args.fontPath.split(',').map(function (p) { return p.trim(); }).filter(Boolean)
+    : [];
+
+  const svg = await htmlToSvg(htmlSource, {
+    width: args.width || 800,
+    height: args.height || 600,
+    extraFonts: extraFonts,
+    debug: false,
+  });
+
+  return { content: [{ type: 'text', text: svg }] };
 }
 
 /** Check if a string contains glob wildcard characters */
@@ -170,17 +202,18 @@ function startMcpServer() {
       instructions: [
         '## pug-mcp — Pug Template Compilation Service',
         '',
-        'This server compiles Pug templates via four tools:',
+        'This server compiles Pug templates via five tools:',
         '',
         '- **validate**: Use to quickly check Pug syntax without generating output. Ideal for "validate → fix → re-validate" loops. Much faster than compiling to HTML just to check for errors.',
         '- **to_html**: Use when the user provides Pug source code as a string and wants HTML output. Best for inline templates or code blocks.',
         '- **to_js**: Use when the user wants a client-side JavaScript template function (e.g. for browser use). Only use when explicitly asked for JS/client-side output.',
         '- **render**: Compile one or more .pug files on disk to HTML. Accepts single file path, array of file paths, glob patterns (e.g. "folder/*.pug"), or directory paths (auto-globs **/*.pug). Supports optional output directory for writing results to disk.',
         '- **to_pug**: Convert HTML or XML source string to Pug template source code. Auto-detects mode from content: if source contains <!DOCTYPE html or <html tag → HTML mode (with id/class shorthand), otherwise → XML mode.',
+        '- **html_to_svg**: Convert HTML or Pug to SVG via the Satori engine. Supports Flexbox for automatic layout — Agent can write natural HTML without precise pixel positioning. Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Use fontPath param for additional fonts.',
         '',
         '## Parameter guidance',
         '',
-        '- `source` (required for to_html / to_js / to_pug): The complete Pug/HTML/XML template source code. Do NOT pass file paths here.',
+        '- `source` (required for to_html / to_js / to_pug / html_to_svg): The complete Pug/HTML/XML template source code. Do NOT pass file paths here.',
         '- `input` (required for render): A single file path, an array of file paths, glob patterns (e.g. "src/**/*.pug"), or directory paths (auto-globbed). Do NOT pass Pug source code.',
         '- `output` (optional for render): Directory to write compiled HTML files. When omitted, returns a dictionary mapping file paths to HTML content.',
         '- `pretty`: Set to true for human-readable HTML with indentation and line breaks. Defaults to false (compact output).',
@@ -188,6 +221,7 @@ function startMcpServer() {
         '- `filename`: Virtual filename for error stack traces and basedir resolution. When omitted, defaults to "input.pug" with cwd as basedir.',
         '- `name` (to_js only): The JavaScript function name. Defaults to "template".',
         '- `module` (to_js only): Set to true to wrap output in CommonJS module.exports.',
+        '- `fontPath` (html_to_svg only): Comma-separated paths to additional TTF/OTF/WOFF font files.',
         '',
         '## Workflow',
         '',
@@ -196,6 +230,7 @@ function startMcpServer() {
         '3. User asks for a client-side JS template → use to_js.',
         '4. If the template uses `extends` or `include`, ensure `filename` reflects the actual file path so relative resolution works.',
         '5. User provides HTML/XML to convert to Pug → use to_pug.',
+        '6. User wants to convert HTML/Pug to SVG image → use html_to_svg. Write HTML with Flexbox for automatic layout.',
       ].join('\n'),
     }
   );
@@ -297,6 +332,30 @@ function startMcpServer() {
           required: ['source'],
         },
       },
+      {
+        name: 'html_to_svg',
+        description: [
+          'Convert HTML or Pug template to SVG using the Satori engine.',
+          'Satori supports Flexbox layout for automatic positioning — no pixel-perfect calculations needed.',
+          'Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Use fontPath for additional fonts.',
+          'CSS support includes: flexbox, colors, borders, shadows, transforms, gradients, text styling, and more.',
+          'Limitations: no CSS Grid, no calc(), no TTC/WOFF2 fonts.',
+          'Input type "html" (default) treats source as raw HTML. Type "pug" compiles Pug → HTML → SVG.',
+        ].join(' '),
+        inputSchema: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', description: 'HTML source code or Pug template source code.' },
+            type: { type: 'string', enum: ['html', 'pug'], description: 'Input type: "html" for raw HTML, "pug" for Pug template. Default: "html".' },
+            width: { type: 'number', description: 'SVG canvas width in pixels. Default: 800.' },
+            height: { type: 'number', description: 'SVG canvas height in pixels. Default: 600.' },
+            fontPath: { type: 'string', description: 'Comma-separated paths to additional TTF/OTF/WOFF font files. Already bundled: Inter (Latin) + Noto Sans SC (CJK).' },
+            locals: { type: 'object', description: 'Template variables as a JSON object. Only used when type is "pug".' },
+            pretty: { type: 'boolean', description: 'Whether to pretty-print Pug intermediate output. Only used when type is "pug".' },
+          },
+          required: ['source'],
+        },
+      },
     ],
   }));
 
@@ -314,6 +373,8 @@ function startMcpServer() {
           return handlePugRender(args || {});
         case 'to_pug':
           return handleToPug(args || {});
+        case 'html_to_svg':
+          return await handleHtmlToSvg(args || {});
         default:
           throw new Error('Unknown tool: ' + name);
       }
