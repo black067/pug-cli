@@ -3,7 +3,7 @@
     "pug": {
       "type": "stdio",
       "command": "node",
-      "args": ["./mcp-server.js"]
+      "args": ["./src/cli.js", "--mcp-server"]
     }
   }
 }
