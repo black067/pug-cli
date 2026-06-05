@@ -1,0 +1,139 @@
+doctype html
+html(lang="zh-CN")
+  head
+    style
+      include ../styles/main.css
+  body.bg-page(style="width: 400px; height: 800px; margin: 0; display: flex; flex-direction: column; font-family: 'Inter', 'Noto Sans SC', sans-serif;")
+
+    //- ═══════════════════════════════════════════
+    //- 数据变量
+    //- ═══════════════════════════════════════════
+    - var rankTitle = "战力排行榜"
+    - var tabs = ["战力榜", "等级榜", "公会榜"]
+    - var activeTab = 0
+    - var scoreLabel = "战力"
+    - var top3 = [{ name: "龙骑士·亚瑟", level: 80, score: 158888, avatar: "" },{ name: "暗影刺客·零", level: 78, score: 149999, avatar: "" },{ name: "圣光祭司·艾琳", level: 77, score: 142500, avatar: "" }]
+    - var rankList = [{ rank: 4, name: "冰霜魔导·莉莉丝", level: 75, score: 135200 },{ rank: 5, name: "雷霆战锤·托尔", level: 74, score: 128900 },{ rank: 6, name: "风行者·希尔", level: 73, score: 121500 },{ rank: 7, name: "烈焰剑圣·凯恩", level: 72, score: 114300 },{ rank: 8, name: "守护之盾·格鲁", level: 70, score: 107800 },{ rank: 9, name: "星辰射手·伊娃", level: 69, score: 99800 },{ rank: 10, name: "暗夜骑士·雷恩", level: 68, score: 92500 }]
+    - var myRank = { rank: 42, name: "流浪剑客·我", level: 55, score: 38600 }
+
+    //- ═══════════════════════════════════════════
+    //- Mixins
+    //- ═══════════════════════════════════════════
+
+    //- 头像占位
+    mixin avatar(size, bgColor)
+      div(style="width: "+size+"px; height: "+size+"px; border-radius: 50%; background-color: "+bgColor+"; display: flex; align-items: center; justify-content: center; flex-shrink: 0;")
+        span(style="font-size: "+(size*0.4)+"px; color: #FFFFFF;") ⚔
+
+    //- 排名徽章（前三名用奖牌色，其余用数字）
+    mixin rankBadge(rank)
+      - var colors = {1: '#F59E0B', 2: '#9CA3AF', 3: '#D97706'}
+      - var icons = {1: '👑', 2: '🥈', 3: '🥉'}
+      if rank <= 3
+        div(style="display: flex; flex-direction: column; align-items: center; gap: 2px;")
+          span(style="font-size: 20px;") #{icons[rank]}
+          span(style="font-size: 11px; font-weight: bold; color: "+colors[rank]+";") NO.#{rank}
+      else
+        span.text-tertiary(style="font-size: 14px; font-weight: bold; min-width: 28px; text-align: center;") #{rank}
+
+    //- 排行列表行
+    mixin rankRow(rank, name, level, score, isMe)
+      - var rowBg = isMe ? '#EFF6FF' : (rank % 2 === 0 ? '#FFFFFF' : '#F9FAFB')
+      div(style="display: flex; align-items: center; gap: 10px; padding: 10px 16px; background-color: "+rowBg+";")
+        +rankBadge(rank)
+        +avatar(36, '#6B7280')
+        div(style="flex: 1; min-width: 0;")
+          div(style="display: flex; align-items: center; gap: 6px;")
+            span.text-primary(style="font-size: 13px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;") #{name}
+            if isMe
+              span.tag-bg.tag-text(style="padding: 1px 6px; border-radius: 4px; font-size: 10px;") 我
+          span.text-tertiary(style="font-size: 11px;") Lv.#{level}
+        span.color-primary(style="font-size: 14px; font-weight: bold; white-space: nowrap;") #{score.toLocaleString()}
+
+    //- ═══════════════════════════════════════════
+    //- 顶部标题栏
+    //- ═══════════════════════════════════════════
+    header.bg-header(style="display: flex; align-items: center; justify-content: center; padding: 12px 16px; position: relative;")
+      // 返回按钮（左下角原则不适用于header内的返回，这是导航返回）
+      div(style="position: absolute; left: 16px; display: flex; align-items: center; gap: 2px; cursor: pointer;")
+        span(style="font-size: 18px; color: #4A90E2;") ◀
+      span.text-primary(style="font-size: 18px; font-weight: bold;") #{rankTitle}
+
+    //- ═══════════════════════════════════════════
+    //- Tab 切换栏
+    //- ═══════════════════════════════════════════
+    nav.nav-bg(style="display: flex; border-bottom: 1px solid #E5E7EB;")
+      each tab, i in tabs
+        - var isActive = i === activeTab
+        div(style="flex: 1; text-align: center; padding: 10px 0; cursor: pointer; position: relative;")
+          span(class=isActive ? 'nav-active' : 'nav-inactive' style="font-size: 14px; font-weight: "+ (isActive ? 'bold' : 'normal') + ";") #{tab}
+          if isActive
+            div.nav-indicator(style="position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 24px; height: 3px; border-radius: 2px;")
+
+    //- ═══════════════════════════════════════════
+    //- 主内容区（可滚动）
+    //- ═══════════════════════════════════════════
+    main(style="flex: 1; overflow: hidden; display: flex; flex-direction: column;")
+
+      //- ── Top 3 领奖台 ──────────────────────────
+      div(style="padding: 16px 16px 8px 16px;")
+        div(style="display: flex; align-items: flex-end; justify-content: center; gap: 12px;")
+          //- 第2名
+          div(style="display: flex; flex-direction: column; align-items: center; gap: 6px;")
+            +avatar(52, '#9CA3AF')
+            div.bg-surface(style="display: flex; flex-direction: column; align-items: center; padding: 6px 10px; border-radius: 8px; border: 1px solid #E5E7EB; min-width: 90px;")
+              span.text-primary(style="font-size: 12px; font-weight: bold;") #{top3[1].name}
+              span.text-tertiary(style="font-size: 10px;") Lv.#{top3[1].level}
+              span(style="font-size: 13px; font-weight: bold; color: #9CA3AF;") #{top3[1].score.toLocaleString()}
+            div(style="display: flex; align-items: center; gap: 4px;")
+              span(style="font-size: 16px;") 🥈
+              span(style="font-size: 11px; font-weight: bold; color: #9CA3AF;") NO.2
+
+          //- 第1名
+          div(style="display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 8px;")
+            span(style="font-size: 28px;") 👑
+            +avatar(64, '#F59E0B')
+            div.bg-surface(style="display: flex; flex-direction: column; align-items: center; padding: 8px 14px; border-radius: 10px; border: 2px solid #F59E0B; min-width: 100px; background: linear-gradient(180deg, #FFFBEB 0%, #FFFFFF 100%);")
+              span.text-primary(style="font-size: 13px; font-weight: bold;") #{top3[0].name}
+              span.text-tertiary(style="font-size: 10px;") Lv.#{top3[0].level}
+              span(style="font-size: 15px; font-weight: bold; color: #F59E0B;") #{top3[0].score.toLocaleString()}
+            span(style="font-size: 12px; font-weight: bold; color: #F59E0B;") 👑 NO.1
+
+          //- 第3名
+          div(style="display: flex; flex-direction: column; align-items: center; gap: 6px;")
+            +avatar(48, '#D97706')
+            div.bg-surface(style="display: flex; flex-direction: column; align-items: center; padding: 6px 10px; border-radius: 8px; border: 1px solid #E5E7EB; min-width: 86px;")
+              span.text-primary(style="font-size: 12px; font-weight: bold;") #{top3[2].name}
+              span.text-tertiary(style="font-size: 10px;") Lv.#{top3[2].level}
+              span(style="font-size: 13px; font-weight: bold; color: #D97706;") #{top3[2].score.toLocaleString()}
+            div(style="display: flex; align-items: center; gap: 4px;")
+              span(style="font-size: 16px;") 🥉
+              span(style="font-size: 11px; font-weight: bold; color: #D97706;") NO.3
+
+      //- ── 分割线 ────────────────────────────────
+      div.divider(style="margin: 4px 16px;")
+
+      //- ── 排名列表表头 ──────────────────────────
+      div(style="display: flex; align-items: center; padding: 6px 16px; gap: 10px;")
+        span.text-tertiary(style="font-size: 11px; min-width: 28px; text-align: center;") 排名
+        span.text-tertiary(style="font-size: 11px; flex: 1;") 玩家
+        span.text-tertiary(style="font-size: 11px;") #{scoreLabel}
+
+      //- ── 排名列表 4-10 ────────────────────────
+      div(style="flex: 1; overflow: hidden;")
+        each item in rankList
+          +rankRow(item.rank, item.name, item.level, item.score, false)
+
+    //- ═══════════════════════════════════════════
+    //- 底部固定区
+    //- ═══════════════════════════════════════════
+    footer(style="flex-shrink: 0;")
+      //- 我的排名
+      div.divider
+      div(style="padding: 0;")
+        +rankRow(myRank.rank, myRank.name, myRank.level, myRank.score, true)
+
+      //- 底部按钮栏
+      div.bg-footer(style="display: flex; gap: 12px; padding: 10px 16px; border-top: 1px solid #E5E7EB;")
+        button.btn-secondary-bg.btn-secondary-text(style="flex: 1; padding: 12px 0; border: none; border-radius: 8px; font-size: 15px; cursor: pointer;") ◀ 返回
+        button.btn-primary-bg.btn-primary-text(style="flex: 1; padding: 12px 0; border: none; border-radius: 8px; font-size: 15px; cursor: pointer;") 🎁 奖励预览

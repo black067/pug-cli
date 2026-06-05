@@ -57,7 +57,27 @@ function handleToPug(args) {
 async function handleHtmlToSvg(args) {
   let htmlSource;
 
-  if (args.type === 'pug') {
+  if (args.type === 'file') {
+    // Read file from disk, auto-detect type by content
+    var resolved = path.resolve(args.source);
+    if (!fs.existsSync(resolved)) {
+      throw new Error('File not found: ' + args.source);
+    }
+    var fileSource = fs.readFileSync(resolved, 'utf8');
+    // Reuse markupToPug.detectMode to check if content is HTML by inspecting content
+    if (markupToPug.detectMode(fileSource) === 'html') {
+      // Content looks like HTML → treat as raw HTML
+      htmlSource = fileSource;
+    } else {
+      // Content does not look like HTML → treat as Pug template
+      try {
+        var fn = pug.compile(fileSource, buildPugOptions({ ...args, filename: resolved }));
+        htmlSource = fn(args.locals || {});
+      } catch (err) {
+        throw new Error('Pug compilation failed: ' + err.message);
+      }
+    }
+  } else if (args.type === 'pug') {
     // Compile Pug to HTML first
     try {
       const fn = pug.compile(args.source, buildPugOptions(args));
@@ -209,11 +229,11 @@ function startMcpServer() {
         '- **to_js**: Use when the user wants a client-side JavaScript template function (e.g. for browser use). Only use when explicitly asked for JS/client-side output.',
         '- **render**: Compile one or more .pug files on disk to HTML. Accepts single file path, array of file paths, glob patterns (e.g. "folder/*.pug"), or directory paths (auto-globs **/*.pug). Supports optional output directory for writing results to disk.',
         '- **to_pug**: Convert HTML or XML source string to Pug template source code. Auto-detects mode from content: if source contains <!DOCTYPE html or <html tag → HTML mode (with id/class shorthand), otherwise → XML mode.',
-        '- **html_to_svg**: Convert HTML or Pug to SVG via the Satori engine. Supports Flexbox for automatic layout — Agent can write natural HTML without precise pixel positioning. Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Use fontPath param for additional fonts.',
+        '- **html_to_svg**: Convert HTML, Pug, or a file on disk to SVG via the Satori engine. Supports Flexbox for automatic layout — Agent can write natural HTML without precise pixel positioning. Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Use fontPath param for additional fonts. Use type="file" to read from a file path.',
         '',
         '## Parameter guidance',
         '',
-        '- `source` (required for to_html / to_js / to_pug / html_to_svg): The complete Pug/HTML/XML template source code. Do NOT pass file paths here.',
+        '- `source` (required for to_html / to_js / to_pug / html_to_svg): The complete Pug/HTML/XML template source code, or a file path when type="file".',
         '- `input` (required for render): A single file path, an array of file paths, glob patterns (e.g. "src/**/*.pug"), or directory paths (auto-globbed). Do NOT pass Pug source code.',
         '- `output` (optional for render): Directory to write compiled HTML files. When omitted, returns a dictionary mapping file paths to HTML content.',
         '- `pretty`: Set to true for human-readable HTML with indentation and line breaks. Defaults to false (compact output).',
@@ -230,7 +250,7 @@ function startMcpServer() {
         '3. User asks for a client-side JS template → use to_js.',
         '4. If the template uses `extends` or `include`, ensure `filename` reflects the actual file path so relative resolution works.',
         '5. User provides HTML/XML to convert to Pug → use to_pug.',
-        '6. User wants to convert HTML/Pug to SVG image → use html_to_svg. Write HTML with Flexbox for automatic layout.',
+        '6. User wants to convert HTML/Pug to SVG image → use html_to_svg. Write HTML with Flexbox for automatic layout, or use type="file" to convert a file on disk.',
       ].join('\n'),
     }
   );
@@ -340,13 +360,13 @@ function startMcpServer() {
           'Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Use fontPath for additional fonts.',
           'CSS support includes: flexbox, colors, borders, shadows, transforms, gradients, text styling, and more.',
           'Limitations: no CSS Grid, no calc(), no TTC/WOFF2 fonts.',
-          'Input type "html" (default) treats source as raw HTML. Type "pug" compiles Pug → HTML → SVG.',
+          'Input type "html" (default) treats source as raw HTML. Type "pug" compiles Pug → HTML → SVG. Type "file" reads a file path from source and auto-detects by content (HTML markers → HTML, otherwise → Pug).',
         ].join(' '),
         inputSchema: {
           type: 'object',
           properties: {
             source: { type: 'string', description: 'HTML source code or Pug template source code.' },
-            type: { type: 'string', enum: ['html', 'pug'], description: 'Input type: "html" for raw HTML, "pug" for Pug template. Default: "html".' },
+            type: { type: 'string', enum: ['html', 'pug', 'file'], description: 'Input type: "html" for raw HTML (default), "pug" for Pug template string, "file" to read from a file path (auto-detects HTML vs Pug by content inspection).' },
             width: { type: 'number', description: 'SVG canvas width in pixels. Default: 800.' },
             height: { type: 'number', description: 'SVG canvas height in pixels. Default: 600.' },
             fontPath: { type: 'string', description: 'Comma-separated paths to additional TTF/OTF/WOFF font files. Already bundled: Inter (Latin) + Noto Sans SC (CJK).' },

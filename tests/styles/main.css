@@ -1,0 +1,147 @@
+/*==============================================================================
+  Project Light Theme — 寻龙小队 UI Design System
+  ──────────────────────────────────────────────────────────────────────────────
+  竖版手机游戏浅色主题标准样式表。
+  所有类名使用标准 CSS 属性，可直接用于 HTML 元素的 class 属性。
+  由 Satori 引擎将 HTML + CSS 渲染为 SVG。
+
+  使用方式（Pug 模板中）：
+    在 <style> 标签中 @import 或 include 此文件内容
+
+  按钮分级：
+    - primary:   蓝色主按钮 (#4A90E2) — 主要行动点（确认、开始、购买）
+    - secondary: 浅蓝色次按钮 (#E8F0FE) — 次要行动点（取消、返回、查看详情）
+==============================================================================*/
+
+/* ── 背景层级 ────────────────────────────────────────────────────────────── */
+.bg-page          { background-color: #F5F6FA; }       /* 页面背景 */
+.bg-surface       { background-color: #FFFFFF; }       /* 卡片/面板底色 */
+.bg-overlay       { background-color: rgba(0,0,0,0.25); }  /* 遮罩层 */
+.bg-header        { background-color: #FFFFFF; }       /* 顶部导航栏背景 */
+.bg-footer        { background-color: #FFFFFF; }       /* 底部栏背景 */
+.bg-tooltip       { background-color: #1A1A2E; }       /* 提示框背景（深色） */
+
+/* ── 文字颜色 ────────────────────────────────────────────────────────────── */
+.text-primary     { color: #1A1A2E; }       /* 主文字 — 标题/正文 */
+.text-secondary   { color: #6B7280; }       /* 副文字 — 说明/标注 */
+.text-tertiary    { color: #9CA3AF; }       /* 辅助文字 — 占位符/禁用 */
+.text-white       { color: #FFFFFF; }       /* 白色文字（用于彩色背景上） */
+.text-link        { color: #4A90E2; }       /* 链接/可点击文字 */
+.text-on-primary  { color: #FFFFFF; }       /* 主按钮上文字 */
+.text-on-secondary{ color: #4A90E2; }       /* 次按钮上文字 */
+.text-price       { color: #F59E0B; }       /* 价格/货币数值 */
+.text-highlight   { color: #EF4444; }       /* 高亮/强调文字 */
+
+/* ── 按钮 Primary（蓝色 — 主要行动点） ────────────────────────────────── */
+.btn-primary-bg          { background-color: #4A90E2; }
+.btn-primary-text        { color: #FFFFFF; font-weight: bold; }
+.btn-primary-hover-bg    { background-color: #357ABD; }
+.btn-primary-pressed-bg  { background-color: #2A6CB0; }
+.btn-primary-border      { border: 1px solid #4A90E2; }
+
+/* ── 按钮 Secondary（浅蓝色 — 次要行动点） ──────────────────────────── */
+.btn-secondary-bg          { background-color: #E8F0FE; }
+.btn-secondary-text        { color: #4A90E2; font-weight: bold; }
+.btn-secondary-hover-bg    { background-color: #D0E4F7; }
+.btn-secondary-pressed-bg  { background-color: #B8D5F0; }
+.btn-secondary-border      { border: 1px solid #D0E4F7; }
+
+/* ── 按钮 Disabled（灰色 — 不可用） ────────────────────────────────── */
+.btn-disabled-bg          { background-color: #D1D5DB; }
+.btn-disabled-text        { color: #9CA3AF; }
+.btn-disabled-border      { border: 1px solid #D1D5DB; }
+
+/* ── 输入框 ──────────────────────────────────────────────────────────────── */
+.input-bg           { background-color: #FFFFFF; }
+.input-border       { border: 1px solid #D1D5DB; }
+.input-border-focus { border: 2px solid #4A90E2; }
+.input-text         { color: #1A1A2E; }
+.input-placeholder  { color: #9CA3AF; }
+.input-label        { color: #6B7280; font-size: 12px; }
+
+/* ── 边框 / 分割线 ──────────────────────────────────────────────────────── */
+.border-default   { border: 1px solid #E5E7EB; }
+.border-light     { border: 1px solid #F3F4F6; }
+.border-focus     { border: 2px solid #4A90E2; }
+.border-error     { border: 1px solid #EF4444; }
+.divider          { border-bottom: 1px solid #E5E7EB; }
+
+/* ── 状态色 ────────────────────────────────────────────────────────────────── */
+.color-primary   { color: #4A90E2; }       /* 蓝色 — 主要/信息 */
+.color-success   { color: #22C55E; }       /* 绿色 — 成功/完成 */
+.color-warning   { color: #F59E0B; }       /* 橙色 — 警告/注意 */
+.color-error     { color: #EF4444; }       /* 红色 — 错误/危险 */
+.color-info      { color: #3B82F6; }       /* 蓝色 — 信息提示 */
+
+/* ── 导航 / Tab ──────────────────────────────────────────────────────────── */
+.nav-bg          { background-color: #FFFFFF; }
+.nav-active      { color: #4A90E2; }
+.nav-inactive    { color: #9CA3AF; }
+.nav-indicator   { background-color: #4A90E2; }
+
+/* ── 标签 / 徽章 ────────────────────────────────────────────────────────── */
+.tag-bg       { background-color: #EFF6FF; }
+.tag-text     { color: #4A90E2; font-size: 11px; }
+.tag-bg-success { background-color: #F0FDF4; }
+.tag-text-success { color: #22C55E; font-size: 11px; }
+.tag-bg-warning { background-color: #FFFBEB; }
+.tag-text-warning { color: #F59E0B; font-size: 11px; }
+.tag-bg-error  { background-color: #FEF2F2; }
+.tag-text-error  { color: #EF4444; font-size: 11px; }
+
+.badge-bg      { background-color: #EF4444; }
+.badge-text    { color: #FFFFFF; font-size: 10px; font-weight: bold; }
+.badge-bg-num  { background-color: #4A90E2; }
+.badge-text-num{ color: #FFFFFF; font-size: 10px; font-weight: bold; }
+
+/* ── 进度条 ────────────────────────────────────────────────────────────────── */
+.progress-bg      { background-color: #E5E7EB; border-radius: 4px; }
+.progress-fill    { background-color: #4A90E2; border-radius: 4px; }
+.progress-fill-success { background-color: #22C55E; border-radius: 4px; }
+.progress-text    { color: #6B7280; font-size: 12px; }
+.progress-text-inner { color: #FFFFFF; font-size: 11px; font-weight: bold; }
+
+/* ── 卡片 / 列表项 ──────────────────────────────────────────────────────────── */
+.card-bg        { background-color: #FFFFFF; }
+.card-border    { border: 1px solid #E5E7EB; border-radius: 8px; }
+.card-bg-hover  { background-color: #F9FAFB; }
+
+/* ── 弹窗 / 提示框 ──────────────────────────────────────────────────────────── */
+.modal-overlay   { background-color: rgba(0,0,0,0.35); }
+.modal-bg        { background-color: #FFFFFF; border-radius: 12px; }
+.modal-title     { color: #1A1A2E; font-size: 18px; font-weight: bold; }
+.modal-desc      { color: #6B7280; font-size: 14px; }
+.modal-close-bg  { background-color: #F3F4F6; }
+.modal-close-icon{ color: #6B7280; }
+
+/* ── 图标默认色 ────────────────────────────────────────────────────────────── */
+.icon-primary   { color: #4A90E2; }
+.icon-secondary { color: #9CA3AF; }
+.icon-white     { color: #FFFFFF; }
+.icon-success   { color: #22C55E; }
+.icon-warning   { color: #F59E0B; }
+.icon-error     { color: #EF4444; }
+
+/* ── 列表 / Table 行 ────────────────────────────────────────────────────────── */
+.row-even       { background-color: #FFFFFF; }
+.row-odd        { background-color: #F9FAFB; }
+.row-selected   { background-color: #EFF6FF; }
+.row-pressed    { background-color: #DBEAFE; }
+
+/* ── 开关 / 滑块 ────────────────────────────────────────────────────────────── */
+.switch-on-bg   { background-color: #4A90E2; }
+.switch-off-bg  { background-color: #D1D5DB; }
+.switch-thumb   { background-color: #FFFFFF; }
+.slider-track   { background-color: #E5E7EB; }
+.slider-fill    { background-color: #4A90E2; }
+.slider-thumb   { background-color: #FFFFFF; border: 1px solid #D1D5DB; }
+
+/* ── 头像 / 图标容器 ──────────────────────────────────────────────────────────── */
+.avatar-border  { border: 2px solid #E5E7EB; }
+.avatar-bg      { background-color: #F3F4F6; }
+.rank-bg        { background-color: #F59E0B; }
+.rank-text      { color: #FFFFFF; font-size: 10px; font-weight: bold; }
+
+/* ── 数量角标（红点/数字） ──────────────────────────────────────────────────────── */
+.dot-notify     { background-color: #EF4444; }
+.dot-new        { background-color: #4A90E2; }
