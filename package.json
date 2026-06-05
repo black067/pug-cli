@@ -27,5 +27,8 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "htmlparser2": "^12.0.0"
+  }
 }

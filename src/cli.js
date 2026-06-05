@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const pug = require('pug');
+const markupToPug = require('./markup2pug');
 
 // ============================================================
 // Constants
@@ -63,10 +64,11 @@ function compileToJS(filePath, opts) {
 }
 
 /**
- * Write compilation output (HTML or JS) for a single file.
+ * Write compilation output for a single file.
+ * @param {string} ext - output extension override (e.g. '.pug' for reverse mode)
  */
-function writeOutput(filePath, content, outDir, isClient) {
-  const ext = isClient ? '.js' : '.html';
+function writeOutput(filePath, content, outDir, isClient, ext) {
+  ext = ext || (isClient ? '.js' : '.html');
   const basename = path.basename(filePath, path.extname(filePath)) + ext;
   const outPath = path.join(outDir, basename);
   fs.writeFileSync(outPath, content, 'utf8');
@@ -75,7 +77,7 @@ function writeOutput(filePath, content, outDir, isClient) {
 }
 
 /**
- * Compile one file and write output.
+ * Compile one .pug file and write output.
  */
 function compileAndWrite(filePath, opts) {
   const resolved = path.resolve(filePath);
@@ -95,6 +97,28 @@ function compileAndWrite(filePath, opts) {
     return true;
   } catch (err) {
     console.error('Error compiling ' + filePath + ':', err.message || err);
+    return false;
+  }
+}
+
+/**
+ * Reverse-convert an HTML or XML file to Pug.
+ * Mode is auto-detected from file content.
+ */
+function reverseAndWrite(filePath, opts) {
+  const resolved = path.resolve(filePath);
+  if (!fs.existsSync(resolved)) {
+    console.error('Error: file not found: ' + filePath);
+    return false;
+  }
+
+  try {
+    const source = fs.readFileSync(resolved, 'utf8');
+    const pugSource = markupToPug.markupToPug(source);
+    writeOutput(resolved, pugSource, opts.outDir, false, '.pug');
+    return true;
+  } catch (err) {
+    console.error('Error converting ' + filePath + ':', err.message || err);
     return false;
   }
 }
@@ -199,6 +223,7 @@ function printUsage() {
   console.error('I/O modes:');
   console.error('  -w, --watch               Watch files for changes');
   console.error('      --stdin               Read template from stdin');
+  console.error('  -R, --reverse             Convert HTML/XML file to Pug (auto-detect mode)');
   console.error('');
   console.error('Info:');
   console.error('  -h, --help                Display this help message');
@@ -261,6 +286,7 @@ function main() {
     files: [],
     stdin: false,
     watch: false,
+    reverse: false,
     // Compilation (native pug options)
     pretty: false,
     compileDebug: true,
@@ -307,6 +333,12 @@ function main() {
         break;
       case '--stdin':
         opts.stdin = true;
+        break;
+
+      // --- Reverse conversion ---
+      case '-R':
+      case '--reverse':
+        opts.reverse = true;
         break;
 
       // --- Compilation options (native pug) ---
@@ -435,6 +467,18 @@ function main() {
   // Handle --watch
   if (opts.watch) {
     startWatch(opts.files, opts);
+    return;
+  }
+
+  // Reverse mode: convert HTML/XML → Pug
+  if (opts.reverse) {
+    var ok = true;
+    for (var j = 0; j < opts.files.length; j++) {
+      if (!reverseAndWrite(opts.files[j], opts)) {
+        ok = false;
+      }
+    }
+    if (!ok) process.exit(EXIT_FAILURE);
     return;
   }
 

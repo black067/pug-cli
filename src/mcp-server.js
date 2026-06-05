@@ -4,6 +4,7 @@
 const pug = require('pug');
 const fs = require('fs');
 const path = require('path');
+const markupToPug = require('./markup2pug');
 const { Server } = require('@modelcontextprotocol/sdk/server');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const {
@@ -46,6 +47,11 @@ function handlePugToJs(args) {
 function handlePugValidate(args) {
   pug.compile(args.source, buildPugOptions(args));
   return { content: [{ type: 'text', text: 'Pug syntax is valid.' }] };
+}
+
+function handleToPug(args) {
+  const pugSource = markupToPug.markupToPug(args.source);
+  return { content: [{ type: 'text', text: pugSource }] };
 }
 
 /** Check if a string contains glob wildcard characters */
@@ -164,16 +170,17 @@ const server = new Server(
     instructions: [
       '## pug-mcp — Pug Template Compilation Service',
       '',
-      'This server compiles Pug templates via three tools:',
+      'This server compiles Pug templates via four tools:',
       '',
       '- **validate**: Use to quickly check Pug syntax without generating output. Ideal for "validate → fix → re-validate" loops. Much faster than compiling to HTML just to check for errors.',
       '- **to_html**: Use when the user provides Pug source code as a string and wants HTML output. Best for inline templates or code blocks.',
       '- **to_js**: Use when the user wants a client-side JavaScript template function (e.g. for browser use). Only use when explicitly asked for JS/client-side output.',
       '- **render**: Compile one or more .pug files on disk to HTML. Accepts single file path, array of file paths, glob patterns (e.g. "folder/*.pug"), or directory paths (auto-globs **/*.pug). Supports optional output directory for writing results to disk.',
+      '- **to_pug**: Convert HTML or XML source string to Pug template source code. Auto-detects mode from content: if source contains <!DOCTYPE html or <html tag → HTML mode (with id/class shorthand), otherwise → XML mode.',
       '',
       '## Parameter guidance',
       '',
-      '- `source` (required for to_html / to_js): The complete Pug template source code. Do NOT pass file paths here.',
+      '- `source` (required for to_html / to_js / to_pug): The complete Pug/HTML/XML template source code. Do NOT pass file paths here.',
       '- `input` (required for render): A single file path, an array of file paths, glob patterns (e.g. "src/**/*.pug"), or directory paths (auto-globbed). Do NOT pass Pug source code.',
       '- `output` (optional for render): Directory to write compiled HTML files. When omitted, returns a dictionary mapping file paths to HTML content.',
       '- `pretty`: Set to true for human-readable HTML with indentation and line breaks. Defaults to false (compact output).',
@@ -188,6 +195,7 @@ const server = new Server(
       '2. Validation fails → fix the syntax error and re-validate. Do NOT blindly re-compile without fixing.',
       '3. User asks for a client-side JS template → use to_js.',
       '4. If the template uses `extends` or `include`, ensure `filename` reflects the actual file path so relative resolution works.',
+      '5. User provides HTML/XML to convert to Pug → use to_pug.',
     ].join('\n'),
   }
 );
@@ -273,6 +281,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['input'],
       },
     },
+    {
+      name: 'to_pug',
+      description: [
+        'Convert HTML or XML source string to Pug template source code.',
+        'Auto-detects mode from content:',
+        '* Contains <!DOCTYPE html or <html tag → HTML mode (with #id, .class shorthand, boolean attributes)',
+        '* Otherwise → XML mode (preserves namespaces, CDATA, XML declarations)',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', description: 'HTML or XML source code to convert to Pug.' },
+        },
+        required: ['source'],
+      },
+    },
   ],
 }));
 
@@ -288,6 +312,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return handlePugToJs(args || {});
       case 'render':
         return handlePugRender(args || {});
+      case 'to_pug':
+        return handleToPug(args || {});
       default:
         throw new Error('Unknown tool: ' + name);
     }
