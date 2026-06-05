@@ -229,6 +229,7 @@ function printUsage() {
   console.error('  -h, --help                Display this help message');
   console.error('  -V, --version             Display version information');
   console.error('      --licence             Display license information');
+  console.error('      --mcp-server           Start MCP (Model Context Protocol) server');
   console.error('');
 }
 
@@ -319,6 +320,10 @@ function main() {
         return;
       case '--licence':
         printLicense();
+        return;
+      case '--mcp-server':
+        const { startMcpServer } = require('./mcp-core');
+        startMcpServer();
         return;
 
       // --- I/O ---

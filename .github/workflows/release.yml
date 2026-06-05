@@ -29,13 +29,10 @@ jobs:
       - name: Bundle pug-cli
         run: npm run bundle
 
-      - name: Bundle pug-mcp
-        run: npm run bundle:mcp
-
       - name: Stage JS bundles
         run: |
           mkdir -p staging
-          cp dist/pug-cli-bundled.js dist/pug-mcp-bundled.js staging/
+          cp dist/pug-cli-bundled.js staging/
 
       - uses: actions/upload-artifact@v7
         with:
@@ -82,21 +79,16 @@ jobs:
       - name: Build pug-cli SEA binary
         run: npm run sea
 
-      - name: Build pug-mcp SEA binary
-        run: npm run sea:mcp
-
-      - name: Rename SEA binaries
+      - name: Rename SEA binary
         shell: bash
         run: |
           mv dist/pug${{ matrix.ext }} dist/pug-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}
-          mv dist/pug-mcp${{ matrix.ext }} dist/pug-mcp-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}
 
-      - name: Stage SEA binaries
+      - name: Stage SEA binary
         shell: bash
         run: |
           mkdir -p staging
           cp dist/pug-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }} staging/
-          cp dist/pug-mcp-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }} staging/
 
       - uses: actions/upload-artifact@v7
         with:
@@ -131,13 +123,9 @@ jobs:
         run: |
           cd release-assets
 
-          # JS Bundles
-          mkdir -p "JS Bundles"
-          mv pug-cli-bundled.js pug-mcp-bundled.js "JS Bundles/" 2>/dev/null || true
-
-          # pug-mcp binaries
-          mkdir -p pug-mcp
-          mv pug-mcp-* pug-mcp/ 2>/dev/null || true
+          # JS Bundle
+          mkdir -p "JS Bundle"
+          mv pug-cli-bundled.js "JS Bundle/" 2>/dev/null || true
 
           # pug-cli binaries
           mkdir -p pug-cli

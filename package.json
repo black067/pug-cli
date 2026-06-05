@@ -5,19 +5,14 @@
   "type": "commonjs",
   "main": "src/cli.js",
   "bin": {
-    "pug": "src/cli.js",
-    "pug-mcp": "src/mcp-server.js"
+    "pug": "src/cli.js"
   },
   "scripts": {
     "bundle": "node scripts/bundle.js",
     "sea": "node scripts/build-sea.js",
-    "build": "npm run bundle && npm run sea",
-    "bundle:mcp": "node scripts/bundle-mcp.js",
-    "sea:mcp": "node scripts/build-sea-mcp.js",
-    "build:mcp": "npm run bundle:mcp && npm run sea:mcp"
+    "build": "npm run bundle && npm run sea"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "esbuild": "^0.25.12",
     "png-to-ico": "^3.0.1",
     "postject": "^1.0.0-alpha.6",
@@ -29,6 +24,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "htmlparser2": "^12.0.0"
   }
 }

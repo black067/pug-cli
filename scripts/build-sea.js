@@ -128,6 +128,66 @@ function setIcon() {
   console.log('Icon resource replaced.');
 }
 
+/**
+ * Embed version info (FileVersionInfo) into the .exe so that Windows shows
+ * proper metadata (CompanyName, FileDescription, ProductName, etc.) and
+ * browsers / SmartScreen are slightly less likely to flag the binary.
+ */
+function setVersionInfo() {
+  if (os.platform() !== 'win32') return;
+
+  console.log('Setting version info in executable...');
+  const { NtExecutable, NtExecutableResource, Resource } = require('resedit');
+
+  const exeBuf = fs.readFileSync(OUTPUT_BINARY);
+  const exec = NtExecutable.from(toArrayBuffer(exeBuf), { ignoreCert: true });
+  const res = NtExecutableResource.from(exec, true);
+
+  // Remove existing version-info entries (RT_VERSION = 16)
+  res.entries = res.entries.filter(e => e.type !== 16);
+
+  // Read version from package.json
+  const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf8'));
+  const [major, minor, patch] = pkg.version.split('.').map(Number);
+
+  const versionInfo = Resource.VersionInfo.create({
+    lang: 1033, // en-US
+    fixedInfo: {
+      fileVersionMS: (major << 16) | (minor || 0),
+      fileVersionLS: ((patch || 0) << 16) | 0,
+      productVersionMS: (major << 16) | (minor || 0),
+      productVersionLS: ((patch || 0) << 16) | 0,
+      fileFlagsMask: 0,
+      fileFlags: 0,
+      fileOS: Resource.VersionFileOS.NT_Windows32,
+      fileType: Resource.VersionFileType.App,
+      fileSubtype: 0,
+      fileDateMS: 0,
+      fileDateLS: 0,
+    },
+    strings: [{
+      lang: 1033,
+      codepage: 1200, // Unicode
+      values: {
+        'CompanyName': 'pug-cli',
+        'FileDescription': 'Pug Template Engine — CLI & MCP Server',
+        'FileVersion': `${major}.${minor}.${patch}.0`,
+        'ProductName': 'pug-cli',
+        'ProductVersion': `${major}.${minor}.${patch}`,
+        'OriginalFilename': path.basename(OUTPUT_BINARY),
+        'InternalName': path.basename(OUTPUT_BINARY, '.exe'),
+      },
+    }],
+  });
+
+  res.entries.push(versionInfo.generateResource());
+
+  res.outputResource(exec, false, true);
+  const outBuf = Buffer.from(exec.generate());
+  fs.writeFileSync(OUTPUT_BINARY, outBuf);
+  console.log('Version info set.');
+}
+
 function generateBlob() {
   console.log('Generating SEA blob...');
   execSync(`node --experimental-sea-config "${SEA_CONFIG}"`, {
@@ -171,6 +231,7 @@ async function main() {
   copyNodeBinary();
   injectBlob();
   setIcon();
+  setVersionInfo();
 }
 
 main().catch(err => {
