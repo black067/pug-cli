@@ -2,7 +2,7 @@
 
 一个对 [Pug 模板引擎](https://pugjs.org/) 的简单命令行封装，支持将 `.pug` 文件编译为 HTML 或 JavaScript 模板函数。
 
-## 做了什么
+**做了什么**
 
 本项目本质上只是对 `pug` 库做了一层 CLI 封装，然后通过 **esbuild** 将所有依赖打包成单个 JS 文件，再用 Node.js **SEA (Single Executable Application)** 机制生成独立的可执行文件，方便在没有 Node.js 环境的机器上直接使用。
 
