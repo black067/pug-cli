@@ -128,8 +128,6 @@ async function toSvgAndWrite(filePath, opts) {
     }
 
     const svg = await htmlToSvg(htmlSource, {
-      width: opts.svgWidth || 800,
-      height: opts.svgHeight || 600,
       extraFonts: opts.fontPaths || [],
       debug: false,
     });
@@ -179,8 +177,8 @@ function compileStdin(opts) {
       if (opts.toSvg) {
         // SVG mode: treat stdin as HTML and convert
         content = await htmlToSvg(buf, {
-          width: opts.svgWidth || 800,
-          height: opts.svgHeight || 600,
+          width: opts.svgWidth,
+          height: opts.svgHeight,
           extraFonts: opts.fontPaths || [],
           debug: false,
         });
@@ -345,8 +343,8 @@ function main() {
     reverse: false,
     toSvg: false,
     // SVG
-    svgWidth: 800,
-    svgHeight: 600,
+    svgWidth: undefined,
+    svgHeight: undefined,
     fontPaths: [],
     // Compilation (native pug options)
     pretty: false,
