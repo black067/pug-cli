@@ -14,6 +14,9 @@
 
 ```bash
 ./dist/pug.exe <input.pug> [options]
+
+# HELP
+./dist/pug.exe --help # 查阅使用方式
 ```
 
 ## 构建
