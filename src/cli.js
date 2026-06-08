@@ -280,62 +280,245 @@ function startWatch(files, opts) {
 }
 
 // ============================================================
-// Usage & Info
+// Option schema — single source of truth for parsing + help
 // ============================================================
+//
+// Each entry: { group, long, short?, type, key?, desc, default?, invert?, multiple?, set? }
+//
+// Types:
+//   flag    → opts[key] = !invert
+//   str     → opts[key] = value
+//   path    → opts[key] = path.resolve(value)
+//   num     → opts[key] = parseInt(value), validated > 0
+//   json    → opts[key] = resolveLocals(value)
+//   list    → (opts[key] || []).push(value)
+//   filter  → opts.filters[name] = require(resolved module)
+//   plugin  → opts.plugins.push(require(resolved module))
+//   action  → immediate handler, exits (help/version/license/etc.)
+
+var OPTIONS = [
+  // -- Info actions -----------------------------------------------------------
+  { group: 'Info', long: '--help',             short: '-h',  type: 'action', action: 'help',          desc: 'Display this help message' },
+  { group: 'Info', long: '--version',          short: '-V',  type: 'action', action: 'version',       desc: 'Display version information' },
+  { group: 'Info', long: '--licence',                        type: 'action', action: 'license',       desc: 'Display license information' },
+  { group: 'Info', long: '--config-gen',                     type: 'action', action: 'configGen',     desc: 'Generate pug-cli.config.json template in current directory' },
+  { group: 'Info', long: '--browser-detect',                 type: 'action', action: 'browserDetect', desc: 'Show browser detection diagnostics (all levels)' },
+  { group: 'Info', long: '--mcp-server',                     type: 'action', action: 'mcpServer',     desc: 'Start MCP (Model Context Protocol) server' },
+
+  // -- Compilation ------------------------------------------------------------
+  { group: 'Compilation', long: '--out',       short: '-o',  type: 'path',   key: 'outDir',    desc: 'Output directory (default: current dir)' },
+  { group: 'Compilation', long: '--basedir',   short: '-b',  type: 'path',   key: 'basedir',   desc: 'Base directory for include/extends paths (default: dir of input file)' },
+  { group: 'Compilation', long: '--pretty',    short: '-p',  type: 'flag',   key: 'pretty',    desc: 'Pretty-print HTML output' },
+  { group: 'Compilation', long: '--obj',       short: '-O',  type: 'json',   key: 'locals',    desc: 'JSON string or JSON file with template variables' },
+  { group: 'Compilation', long: '--no-debug',  short: '-D',  type: 'flag',   key: 'compileDebug', desc: 'Disable compile debug info (default: on)', invert: true },
+  { group: 'Compilation', long: '--doctype',   short: '-d',  type: 'str',    key: 'doctype',   desc: 'Override doctype (html, xml, transitional, etc.)' },
+  { group: 'Compilation', long: '--global',    short: '-g',  type: 'list',   key: 'globals',   desc: 'Declare a global variable (repeatable)' },
+  { group: 'Compilation', long: '--self',      short: '-s',  type: 'flag',   key: 'self',      desc: 'Use self namespace for locals' },
+  { group: 'Compilation', long: '--cache',     short: '-C',  type: 'flag',   key: 'cache',     desc: 'Enable template caching' },
+
+  // -- Client-side JS ---------------------------------------------------------
+  { group: 'Client JS', long: '--client',     short: '-c',  type: 'flag',   key: 'client',    desc: 'Compile to client-side JS function' },
+  { group: 'Client JS', long: '--module',     short: '-M',  type: 'flag',   key: 'module',    desc: 'Wrap output in module.exports (with --client)' },
+  { group: 'Client JS', long: '--name',       short: '-n',  type: 'str',    key: 'name',      desc: 'Template function name (default: "template")' },
+
+  // -- Extensibility ----------------------------------------------------------
+  { group: 'Extensibility', long: '--filter', short: '-f',  type: 'filter', key: 'filters',   desc: 'Register a filter (e.g. md=jstransformer-markdown-it)' },
+  { group: 'Extensibility', long: '--plugin',               type: 'plugin', key: 'plugins',   desc: 'Load a pug plugin module (repeatable)', multiple: true },
+
+  // -- I/O modes --------------------------------------------------------------
+  { group: 'I/O modes', long: '--watch',     short: '-w',  type: 'flag',   key: 'watch',      desc: 'Watch files for changes' },
+  { group: 'I/O modes', long: '--stdin',                   type: 'flag',   key: 'stdin',       desc: 'Read template from stdin' },
+  { group: 'I/O modes', long: '--reverse',   short: '-R',  type: 'flag',   key: 'reverse',    desc: 'Convert HTML/XML file to Pug (auto-detect mode)' },
+  { group: 'I/O modes', long: '--to-svg',    short: '-S',  type: 'flag',   key: 'toSvg',      desc: 'Convert .pug or .html to SVG (via Satori)' },
+  { group: 'I/O modes', long: '--to-png',    short: '-P',  type: 'flag',   key: 'toPng',      desc: 'Convert .pug or .html to PNG (via Playwright)' },
+  { group: 'I/O modes', long: '--force-png',               type: 'flag',   key: 'forcePng',   desc: 'Force PNG mode even without browser' },
+
+  // -- Image output -----------------------------------------------------------
+  { group: 'Image', long: '--width',         type: 'num',    key: 'svgWidth',  desc: 'Canvas width in px (default: 800)',
+    set: function (opts, v) { opts.svgWidth = v; opts.pngWidth = v; } },
+  { group: 'Image', long: '--height',        type: 'num',    key: 'svgHeight', desc: 'Canvas height in px (default: 600)',
+    set: function (opts, v) { opts.svgHeight = v; opts.pngHeight = v; } },
+  { group: 'Image', long: '--font',          type: 'str',    key: 'fontPaths', desc: 'Load additional TTF/OTF/WOFF font (repeatable, SVG only)', multiple: true },
+
+  // -- PNG-specific -----------------------------------------------------------
+  { group: 'PNG', long: '--browser',  short: '-B',  type: 'path',   key: 'browserPath', desc: 'Specify browser executable path' },
+  { group: 'PNG', long: '--scale',                 type: 'num',    key: 'pngScale',    desc: 'Device scale factor / Retina (default: 2)' },
+  { group: 'PNG', long: '--auto-crop',             type: 'flag',   key: 'autoCrop',    desc: 'Auto-crop PNG to content bounding box' },
+  { group: 'PNG', long: '--full-page',             type: 'flag',   key: 'fullPage',    desc: 'Capture full scrollable page as one PNG' },
+];
+
+// ============================================================
+// Help rendering (auto-generated from OPTIONS schema)
+// ============================================================
+
+function renderHelp() {
+  // Build a lookup: short/long → option
+  var byName = Object.create(null);
+  for (var i = 0; i < OPTIONS.length; i++) {
+    var o = OPTIONS[i];
+    if (o.long) byName[o.long] = o;
+    if (o.short) byName[o.short] = o;
+  }
+
+  // Type → value hint for help display
+  var typeHints = { path: ' <dir>', str: ' <str>', num: ' <n>', json: ' <str>', list: ' <name>', filter: ' <name=mod>', plugin: ' <module>' };
+
+  // Collect info actions separately
+  var infoActions = [
+    byName['--help'], byName['--version'], byName['--licence'],
+    byName['--config-gen'], byName['--browser-detect'], byName['--mcp-server'],
+  ];
+
+  // Group order
+  var groupOrder = ['Compilation', 'Client JS', 'Extensibility', 'I/O modes', 'Image', 'PNG'];
+  var groups = {};
+  for (var g = 0; g < groupOrder.length; g++) {
+    groups[groupOrder[g]] = [];
+  }
+
+  for (var j = 0; j < OPTIONS.length; j++) {
+    var opt = OPTIONS[j];
+    if (opt.type === 'action') continue;
+    var grp = opt.group;
+    if (!groups[grp]) groups[grp] = [];
+    groups[grp].push(opt);
+  }
+
+  var COL = 28; // option column width
+  var lines = ['', 'Usage: pug-cli [options] <file.pug ...>', ''];
+
+  var groupLabels = {
+    'Compilation': 'Compilation options (all map to native pug APIs):',
+    'Client JS': 'Client-side JS compilation:',
+    'Extensibility': 'Extensibility:',
+    'I/O modes': 'I/O modes:',
+    'Image': 'Image output options (with --to-svg or --to-png):',
+    'PNG': 'PNG options (with --to-png):',
+  };
+
+  for (var gi = 0; gi < groupOrder.length; gi++) {
+    var gname = groupOrder[gi];
+    var optList = groups[gname];
+    if (!optList || optList.length === 0) continue;
+
+    lines.push(groupLabels[gname] || gname + ':');
+
+    for (var oi = 0; oi < optList.length; oi++) {
+      var o = optList[oi];
+      var flag = (o.short ? o.short + ', ' : '') + o.long + (typeHints[o.type] || '');
+      var padded = '  ' + flag;
+      while (padded.length < COL) padded += ' ';
+      lines.push(padded + o.desc);
+    }
+    lines.push('');
+  }
+
+  // Info actions
+  lines.push('Info:');
+  for (var ia = 0; ia < infoActions.length; ia++) {
+    var ao = infoActions[ia];
+    if (!ao) continue;
+    var af = (ao.short ? ao.short + ', ' : '') + ao.long;
+    var p = '  ' + af;
+    while (p.length < COL) p += ' ';
+    lines.push(p + ao.desc);
+  }
+  lines.push('');
+
+  return lines.join('\n');
+}
 
 function printUsage(toStderr) {
   var out = toStderr ? console.error.bind(console) : console.log.bind(console);
-  out([
-    '',
-    'Usage: pug-cli [options] <file.pug ...>',
-    '',
-    'Compilation options (all map to native pug APIs):',
-    '  -o, --out <dir>           Output directory (default: current dir)',
-    '  -b, --basedir <dir>       Base directory for resolving include/extends paths (default: dir of input file)',
-    '  -p, --pretty              Pretty-print HTML output',
-    '  -O, --obj <str>           JSON string or JSON file with locals',
-    '  -D, --no-debug            Disable compile debug info (default: on)',
-    '  -d, --doctype <str>       Override doctype (html, xml, transitional, etc.)',
-    '  -g, --global <name>       Declare a global variable (repeatable)',
-    '  -s, --self                Use self namespace for locals',
-    '  -C, --cache               Enable template caching',
-    '',
-    'Client-side JS compilation:',
-    '  -c, --client              Compile to client-side JS function',
-    '  -M, --module              Wrap output in module.exports (with --client)',
-    '  -n, --name <str>          Template function name (default: "template")',
-    '',
-    'Extensibility:',
-    '  -f, --filter <name=mod>   Register a filter (e.g. md=jstransformer-markdown-it)',
-    '      --plugin <module>     Load a pug plugin module (repeatable)',
-    '',
-    'I/O modes:',
-    '  -w, --watch               Watch files for changes',
-    '      --stdin               Read template from stdin',
-    '  -R, --reverse             Convert HTML/XML file to Pug (auto-detect mode)',
-    '  -S, --to-svg              Convert .pug or .html to SVG (via Satori)',
-    '  -P, --to-png              Convert .pug or .html to PNG (via Playwright)',
-    '',
-    'Image output options (with --to-svg or --to-png):',
-    '      --width <n>           Canvas width in px (default: 800)',
-    '      --height <n>          Canvas height in px (default: 600)',
-    '      --font <path>         Load additional TTF/OTF/WOFF font (repeatable, SVG only)',
-    '',
-    'PNG options (with --to-png):',
-    '  -B, --browser <path>     Specify browser executable path',
-    '      --scale <n>           Device scale factor / Retina (default: 2)',
-    '      --auto-crop           Auto-crop PNG to content bounding box',
-    '      --full-page           Capture full scrollable page as one PNG',
-    '',
-    'Info:',
-    '  -h, --help                Display this help message',
-    '  -V, --version             Display version information',
-    '      --licence             Display license information',
-    '      --config-gen          Generate pug-cli.config.json template in current directory',
-    '      --browser-detect      Show browser detection diagnostics (all levels)',
-    '      --mcp-server           Start MCP (Model Context Protocol) server',
-    '',
-  ].join('\n'));
+  out(renderHelp());
+}
+
+// ============================================================
+// Option parser — driven by OPTIONS schema
+// ============================================================
+
+/**
+ * Parse CLI args against the OPTIONS schema, populating `opts`.
+ * Returns the number of args consumed, or -1 if an action was taken.
+ * Throws on parse errors.
+ */
+function parseOption(args, startIdx, opts) {
+  var arg = args[startIdx];
+  var i = startIdx;
+
+  // Find matching option
+  var def = null;
+  for (var d = 0; d < OPTIONS.length; d++) {
+    if (OPTIONS[d].long === arg || OPTIONS[d].short === arg) {
+      def = OPTIONS[d];
+      break;
+    }
+  }
+
+  if (!def) return -1; // not a known option
+
+  // --- Action type: handle immediately ---
+  if (def.type === 'action') {
+    var actionMap = {
+      help:          function () { printUsage(false); },
+      version:       function () { printVersion(); },
+      license:       function () { printLicense(); },
+      configGen:     function () { generateConfigFile(); },
+      browserDetect: function () { var diag = browserDetector.getDiagnostics(opts.browserPath, CONFIG.browser.searchPaths); console.log(JSON.stringify(diag, null, 2)); },
+      mcpServer:     function () { var m = require('./mcp-core'); m.startMcpServer(); },
+    };
+    if (actionMap[def.action]) actionMap[def.action]();
+    return 0; // caller checks: if 0 and action, exit
+  }
+
+  // --- Value types ---
+  if (def.type === 'flag') {
+    if (def.invert) { opts[def.key] = false; }
+    else            { opts[def.key] = true; }
+    return 1;
+  }
+
+  // All other types consume the next arg as value
+  i++;
+  if (i >= args.length) {
+    console.error('Error: ' + def.long + ' requires a value');
+    process.exit(EXIT_FAILURE);
+  }
+  var val = args[i];
+
+  if (def.type === 'str' || def.type === 'list' || def.type === 'font') {
+    if (def.multiple) {
+      if (!opts[def.key]) opts[def.key] = [];
+      opts[def.key].push(val);
+    } else {
+      opts[def.key] = val;
+    }
+  } else if (def.type === 'path') {
+    opts[def.key] = path.resolve(val);
+  } else if (def.type === 'num') {
+    var n = parseInt(val, 10);
+    if (isNaN(n) || n <= 0) {
+      console.error('Error: ' + def.long + ' must be a positive number');
+      process.exit(EXIT_FAILURE);
+    }
+    if (def.set) { def.set(opts, n); }
+    else         { opts[def.key] = n; }
+  } else if (def.type === 'json') {
+    try { opts[def.key] = resolveLocals(val); }
+    catch (e) { console.error('Error: invalid JSON for ' + def.long + ':', e.message); process.exit(EXIT_FAILURE); }
+  } else if (def.type === 'filter') {
+    var sep = val.indexOf('=');
+    if (sep === -1) { console.error('Error: --filter requires name=module format'); process.exit(EXIT_FAILURE); }
+    var fname = val.slice(0, sep);
+    var fmod = val.slice(sep + 1);
+    try { opts.filters[fname] = require(path.resolve(fmod)); }
+    catch (e) { console.error('Error: cannot load filter module "' + fmod + '":', e.message); process.exit(EXIT_FAILURE); }
+  } else if (def.type === 'plugin') {
+    try { opts.plugins.push(require(path.resolve(val))); }
+    catch (e) { console.error('Error: cannot load plugin module "' + val + '":', e.message); process.exit(EXIT_FAILURE); }
+  }
+
+  return 2; // consumed --key value
 }
 
 function printVersion() {
@@ -463,196 +646,20 @@ function main() {
   for (var i = 0; i < args.length; i++) {
     var arg = args[i];
 
-    switch (arg) {
-      // --- Info ---
-      case '-h':
-      case '--help':
-        printUsage(false);
-        return;
-      case '-V':
-      case '--version':
-        printVersion();
-        return;
-      case '--licence':
-        printLicense();
-        return;
-      case '--config-gen':
-        generateConfigFile();
-        return;
-      case '--browser-detect':
-        var diag = browserDetector.getDiagnostics(opts.browserPath, CONFIG.browser.searchPaths);
-        console.log(JSON.stringify(diag, null, 2));
-        return;
-      case '--mcp-server':
-        const { startMcpServer } = require('./mcp-core');
-        startMcpServer();
-        return;
-
-      // --- I/O ---
-      case '-o':
-      case '--out':
-        i++; if (i >= args.length) { console.error('Error: --out requires a directory argument'); process.exit(EXIT_FAILURE); }
-        opts.outDir = path.resolve(args[i]);
-        break;
-      case '-b':
-      case '--basedir':
-        i++; if (i >= args.length) { console.error('Error: --basedir requires a directory argument'); process.exit(EXIT_FAILURE); }
-        opts.basedir = path.resolve(args[i]);
-        break;
-      case '-w':
-      case '--watch':
-        opts.watch = true;
-        break;
-      case '--stdin':
-        opts.stdin = true;
-        break;
-
-      // --- Reverse conversion ---
-      case '-R':
-      case '--reverse':
-        opts.reverse = true;
-        break;
-
-      // --- Image conversion ---
-      case '-S':
-      case '--to-svg':
-        opts.toSvg = true;
-        break;
-      case '-P':
-      case '--to-png':
-        opts.toPng = true;
-        break;
-      case '--force-png':
-        opts.forcePng = true;
-        break;
-      // --width and --height are shared between --to-svg and --to-png.
-      // The two modes are mutually exclusive (validated below), so sharing a single value is safe.
-      case '--width':
-        i++; if (i >= args.length) { console.error('Error: --width requires a number'); process.exit(EXIT_FAILURE); }
-        opts.svgWidth = parseInt(args[i], 10);
-        opts.pngWidth = opts.svgWidth;
-        if (isNaN(opts.svgWidth) || opts.svgWidth <= 0) { console.error('Error: --width must be a positive number'); process.exit(EXIT_FAILURE); }
-        break;
-      case '--height':
-        i++; if (i >= args.length) { console.error('Error: --height requires a number'); process.exit(EXIT_FAILURE); }
-        opts.svgHeight = parseInt(args[i], 10);
-        opts.pngHeight = opts.svgHeight;
-        if (isNaN(opts.svgHeight) || opts.svgHeight <= 0) { console.error('Error: --height must be a positive number'); process.exit(EXIT_FAILURE); }
-        break;
-      case '--font':
-        i++; if (i >= args.length) { console.error('Error: --font requires a file path'); process.exit(EXIT_FAILURE); }
-        opts.fontPaths.push(args[i]);
-        break;
-      // --- PNG-specific options ---
-      case '-B':
-      case '--browser':
-        i++; if (i >= args.length) { console.error('Error: --browser requires a file path'); process.exit(EXIT_FAILURE); }
-        opts.browserPath = path.resolve(args[i]);
-        break;
-      case '--scale':
-        i++; if (i >= args.length) { console.error('Error: --scale requires a number'); process.exit(EXIT_FAILURE); }
-        opts.pngScale = parseInt(args[i], 10);
-        if (isNaN(opts.pngScale) || opts.pngScale <= 0) { console.error('Error: --scale must be a positive number'); process.exit(EXIT_FAILURE); }
-        break;
-      case '--auto-crop':
-        opts.autoCrop = true;
-        break;
-      case '--full-page':
-        opts.fullPage = true;
-        break;
-
-      // --- Compilation options (native pug) ---
-      case '-p':
-      case '--pretty':
-        opts.pretty = true;
-        break;
-      case '-D':
-      case '--no-debug':
-        opts.compileDebug = false;
-        break;
-      case '-d':
-      case '--doctype':
-        i++; if (i >= args.length) { console.error('Error: --doctype requires a value'); process.exit(EXIT_FAILURE); }
-        opts.doctype = args[i];
-        break;
-      case '-g':
-      case '--global':
-        i++; if (i >= args.length) { console.error('Error: --global requires a variable name'); process.exit(EXIT_FAILURE); }
-        opts.globals.push(args[i]);
-        break;
-      case '-s':
-      case '--self':
-        opts.self = true;
-        break;
-      case '-C':
-      case '--cache':
-        opts.cache = true;
-        break;
-
-      // --- Locals ---
-      case '-O':
-      case '--obj':
-        i++; if (i >= args.length) { console.error('Error: --obj requires a JSON string or file path'); process.exit(EXIT_FAILURE); }
-        try {
-          opts.locals = resolveLocals(args[i]);
-        } catch (e) {
-          console.error('Error: invalid JSON for --obj:', e.message);
-          process.exit(EXIT_FAILURE);
-        }
-        break;
-
-      // --- Client-side JS ---
-      case '-c':
-      case '--client':
-        opts.client = true;
-        break;
-      case '-M':
-      case '--module':
-        opts.module = true;
-        break;
-      case '-n':
-      case '--name':
-        i++; if (i >= args.length) { console.error('Error: --name requires a value'); process.exit(EXIT_FAILURE); }
-        opts.name = args[i];
-        break;
-
-      // --- Extensibility ---
-      case '-f':
-      case '--filter':
-        i++; if (i >= args.length) { console.error('Error: --filter requires name=module'); process.exit(EXIT_FAILURE); }
-        {
-          var sep = args[i].indexOf('=');
-          if (sep === -1) { console.error('Error: --filter requires name=module format (e.g. md=jstransformer-markdown-it)'); process.exit(EXIT_FAILURE); }
-          var filterName = args[i].slice(0, sep);
-          var filterMod = args[i].slice(sep + 1);
-          try {
-            opts.filters[filterName] = require(path.resolve(filterMod));
-          } catch (e) {
-            console.error('Error: cannot load filter module "' + filterMod + '":', e.message);
-            process.exit(EXIT_FAILURE);
-          }
-        }
-        break;
-      case '--plugin':
-        i++; if (i >= args.length) { console.error('Error: --plugin requires a module path'); process.exit(EXIT_FAILURE); }
-        try {
-          opts.plugins.push(require(path.resolve(args[i])));
-        } catch (e) {
-          console.error('Error: cannot load plugin module "' + args[i] + '":', e.message);
-          process.exit(EXIT_FAILURE);
-        }
-        break;
-
-      // --- Files ---
-      default:
-        if (arg.charAt(0) !== '-') {
-          opts.files.push(arg);
-        } else {
-          console.error('Error: unknown option ' + arg);
-          printUsage(true);
-          process.exit(EXIT_FAILURE);
-        }
+    // Not a flag → positional file argument
+    if (arg.charAt(0) !== '-') {
+      opts.files.push(arg);
+      continue;
     }
+
+    var consumed = parseOption(args, i, opts);
+    if (consumed === 0) return;           // action taken (help, version, etc.)
+    if (consumed === -1) {                // unknown option
+      console.error('Error: unknown option ' + arg);
+      printUsage(true);
+      process.exit(EXIT_FAILURE);
+    }
+    i += consumed - 1;  // -1 because the for loop will +1
   }
 
   // Handle --stdin
