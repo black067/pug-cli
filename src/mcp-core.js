@@ -285,9 +285,9 @@ async function renderHtmlToImageResponse(html, args) {
     await htmlToPng(html, tempFile, {
       width: args.width,
       height: args.height,
-      scale: args.scale || 2,
+      scale: args.scale,
       autoCrop: !!args.autoCrop,
-      fullPage: !!args.fullPage,
+      fullPage: args.fullPage,
       browserPath: args.browserPath,
     });
 
@@ -358,8 +358,8 @@ function startMcpServer() {
         '- **pug_to_html**: Compile Pug → HTML. Auto-detects inline code vs file/glob/directory. Use `output` to write files.',
         '- **pug_to_js**: Compile Pug → client-side JS function. Use `module: true` for Node.js.',
         '- **html_to_pug**: Convert HTML/XML → Pug syntax.',
-        '- **html_to_svg**: Render HTML → SVG (Satori engine, Flexbox CSS).',
-        '- **html_to_png**: Render HTML → PNG (Playwright headless Chromium). Falls back to SVG if no browser detected.',
+        '- **html_to_svg**: Render HTML → SVG (Satori engine, Flexbox CSS). Width/height auto-detected from inline CSS.',
+        '- **html_to_png**: Render HTML → PNG (Playwright headless Chromium). Falls back to SVG if no browser detected. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json if present.',
         '- **pug_to_png**: Compile Pug → PNG in one step (Pug → HTML → PNG). Falls back to SVG if no browser detected.',
         '',
         '### Tips',
@@ -368,6 +368,8 @@ function startMcpServer() {
         '- Pass template variables via `locals`: {"title": "Hello"}.',
         '- For Pug extends/include, set `filename` to the template file path.',
         '- Extra fonts for SVG: `fonts`: ["path/to/font.ttf"].',
+        '- PNG defaults (width, height, scale, fullPage, wrapperCss) follow convention over configuration. Create `pug-cli.config.json` to customize — run `pug-cli --config-gen` to generate a template.',
+        '- By convention, `fullPage` defaults to `true` (capture natural content height). Set `fullPage: false` explicitly to restrict to viewport.',
       ].join('\n'),
     }
   );
@@ -438,16 +440,16 @@ function startMcpServer() {
         },
         {
           name: 'html_to_png',
-          description: 'Render HTML to PNG via Playwright (headless Chromium). Falls back to SVG if no browser is detected. Uses system-installed Chrome/Edge/Chromium.',
+          description: 'Render HTML to PNG via Playwright (headless Chromium). Falls back to SVG if no browser is detected. Uses system-installed Chrome/Edge/Chromium. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json.',
           inputSchema: {
             type: 'object',
             properties: {
               source: { type: 'string', description: 'HTML source code or a file path to read.' },
-              width: { type: 'number', description: 'Viewport width in pixels (default: 800).' },
-              height: { type: 'number', description: 'Viewport height in pixels (default: 600).' },
-              scale: { type: 'number', description: 'Device scale factor / Retina (default: 2).' },
+              width: { type: 'number', description: 'Viewport width in pixels. Auto-detected from content, then config default (800).' },
+              height: { type: 'number', description: 'Viewport height in pixels. Auto-detected from content, then config default (600).' },
+              scale: { type: 'number', description: 'Device scale factor / Retina. Config default: 2.' },
               autoCrop: { type: 'boolean', description: 'Auto-crop to content bounding box.' },
-              fullPage: { type: 'boolean', description: 'Capture full scrollable page.' },
+              fullPage: { type: 'boolean', description: 'Capture full scrollable page. Config default: true. Set to false to restrict to viewport.' },
               browserPath: { type: 'string', description: 'Explicit browser executable path.' },
             },
             required: ['source'],
@@ -455,7 +457,7 @@ function startMcpServer() {
         },
         {
           name: 'pug_to_png',
-          description: 'Compile Pug to PNG in one step. Accepts inline Pug source or .pug file path. Internally compiles to HTML, then renders to PNG via Playwright. Falls back to SVG if no browser is detected.',
+          description: 'Compile Pug to PNG in one step. Accepts inline Pug source or .pug file path. Internally compiles to HTML, then renders to PNG via Playwright. Falls back to SVG if no browser is detected. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -464,13 +466,13 @@ function startMcpServer() {
               pretty: { type: 'boolean', description: 'Pretty-print intermediate HTML output (only affects Pug compilation).' },
               doctype: { type: 'string', description: 'Override doctype (html, xml, transitional, etc.).' },
               locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },
-              width: { type: 'number', description: 'Viewport width in pixels (default: 800).' },
-              height: { type: 'number', description: 'Viewport height in pixels (default: 600).' },
-              scale: { type: 'number', description: 'Device scale factor / Retina (default: 2).' },
+              width: { type: 'number', description: 'Viewport width in pixels. Auto-detected from content, then config default (800).' },
+              height: { type: 'number', description: 'Viewport height in pixels. Auto-detected from content, then config default (600).' },
+              scale: { type: 'number', description: 'Device scale factor / Retina. Config default: 2.' },
               autoCrop: { type: 'boolean', description: 'Auto-crop to content bounding box.' },
-              fullPage: { type: 'boolean', description: 'Capture full scrollable page.' },
+              fullPage: { type: 'boolean', description: 'Capture full scrollable page. Config default: true. Set to false to restrict to viewport.' },
               browserPath: { type: 'string', description: 'Explicit browser executable path.' },
-              fonts: { type: 'array', items: { type: 'string' }, description: 'Extra font file paths for SVG fallback (TTF/OTF/WOFF).' },
+              fonts: { type: 'array', items: { type: 'string' }, description: 'Extra font file paths for SVG fallback (TTF/OTF/WOF).' },
               debug: { type: 'boolean', description: 'Enable debug layout (SVG fallback only).' },
             },
             required: ['source'],
