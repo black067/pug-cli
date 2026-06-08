@@ -20,12 +20,69 @@ const path = require('path');
 const { autoDetectDimensions } = require('./html2svg');
 
 // ============================================================
+// Configuration (convention over configuration)
+// ============================================================
+
+/**
+ * Built-in defaults. These are the "convention" — they apply unless a
+ * config file overrides them.
+ *
+ * Config file search order (first found wins):
+ *   1. ./pug-cli.config.json   (project-level)
+ *   2. ~/.pug-cli/config.json  (user-level)
+ *
+ * Example config:
+ *   {
+ *     "browser": {
+ *       "searchPaths": ["D:\\MyTools\\chrome.exe"],
+ *       "launchArgs": ["--no-sandbox"]
+ *     },
+ *     "defaults": { "width": 1200, "height": 800, "scale": 1 }
+ *   }
+ */
+var CONFIG = {
+  defaults: { width: 800, height: 600, scale: 2 },
+  browser: {
+    searchPaths: [],
+    launchArgs: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+  },
+};
+
+function loadConfig() {
+  var searchPaths = [
+    path.join(process.cwd(), 'pug-cli.config.json'),
+    path.join(process.env.HOME || process.env.USERPROFILE || '', '.pug-cli', 'config.json'),
+  ];
+  for (var i = 0; i < searchPaths.length; i++) {
+    if (fs.existsSync(searchPaths[i])) {
+      try {
+        var user = JSON.parse(fs.readFileSync(searchPaths[i], 'utf8'));
+        // Merge user config over conventions (shallow merge for known keys)
+        if (user.browser) {
+          if (user.browser.searchPaths) CONFIG.browser.searchPaths = user.browser.searchPaths;
+          if (user.browser.launchArgs) CONFIG.browser.launchArgs = user.browser.launchArgs;
+        }
+        if (user.defaults) {
+          if (user.defaults.width != null) CONFIG.defaults.width = user.defaults.width;
+          if (user.defaults.height != null) CONFIG.defaults.height = user.defaults.height;
+          if (user.defaults.scale != null) CONFIG.defaults.scale = user.defaults.scale;
+        }
+        return;
+      } catch (_) { /* invalid config — ignore, use convention */ }
+    }
+  }
+}
+
+// Load once at module init
+loadConfig();
+
+// ============================================================
 // Lazy playwright-core loader
 // ============================================================
 
 /**
  * Load playwright-core dynamically.
- * Returns null if the module is not available.
+ * Returns null if the module is not available (SEA binary has no native .node addons).
  */
 function loadPlaywright() {
   try {
@@ -43,52 +100,14 @@ function loadPlaywright() {
 var cachedBrowserPath = undefined;
 
 /**
- * Common installation paths for Chromium-based browsers on each platform.
- */
-function getCommonPaths() {
-  if (process.platform === 'win32') {
-    return [
-      // Google Chrome
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Users\\' + (process.env.USERNAME || '') + '\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe',
-      // Microsoft Edge
-      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-      // Chromium (manual install)
-      'C:\\Program Files\\Chromium\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Chromium\\Application\\chrome.exe',
-    ];
-  }
-
-  if (process.platform === 'darwin') {
-    return [
-      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-      '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    ];
-  }
-
-  // Linux
-  return [
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    '/usr/bin/microsoft-edge',
-    '/usr/bin/microsoft-edge-stable',
-  ];
-}
-
-/**
  * Detect a Chromium-based browser executable path.
  *
  * Priority:
- *   1. User-provided path (explicitPath param)
+ *   1. User-provided path (explicitPath param / --browser)
  *   2. $CHROME_PATH or $BROWSER_PATH environment variable
- *   3. playwright-core channel detection (chrome, msedge)
- *   4. playwright-core managed browsers
- *   5. Common installation path enumeration
+ *   3. playwright-core channel detection (chrome, msedge, chromium)
+ *   4. playwright-core managed browser (npx playwright install chromium)
+ *   5. Config file `browser.searchPaths` (replaces hardcoded paths)
  *
  * @param {string} [explicitPath] - User-provided browser path (--browser)
  * @returns {string|null} Absolute path to browser executable, or null
@@ -139,12 +158,12 @@ function detectBrowser(explicitPath) {
     }
   }
 
-  // 5. Common installation paths
-  var commonPaths = getCommonPaths();
-  for (var j = 0; j < commonPaths.length; j++) {
-    if (fs.existsSync(commonPaths[j])) {
-      cachedBrowserPath = commonPaths[j];
-      return commonPaths[j];
+  // 5. Config file browser.searchPaths (user-defined, replaces hardcoded paths)
+  var searchPaths = CONFIG.browser.searchPaths;
+  for (var j = 0; j < searchPaths.length; j++) {
+    if (fs.existsSync(searchPaths[j])) {
+      cachedBrowserPath = searchPaths[j];
+      return searchPaths[j];
     }
   }
 
@@ -196,12 +215,7 @@ async function launchBrowser(opts) {
   var browser = await pw.chromium.launch({
     executablePath: execPath,
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-    ],
+    args: CONFIG.browser.launchArgs,
   });
 
   return { browser: browser, executablePath: execPath };
@@ -269,11 +283,12 @@ function normalizeHtmlContent(htmlString) {
 async function htmlToPng(htmlString, outputPath, opts) {
   opts = opts || {};
 
-  // Auto-detect dimensions from content if not explicitly provided
+  // Auto-detect dimensions from content if not explicitly provided.
+  // Fall back to config defaults (convention: 800×600, scale 2).
   var detected = autoDetectDimensions(htmlString);
-  var width = opts.width || detected.width || 800;
-  var height = opts.height || detected.height || 600;
-  var scale = opts.scale != null ? opts.scale : 2;
+  var width = opts.width || detected.width || CONFIG.defaults.width;
+  var height = opts.height || detected.height || CONFIG.defaults.height;
+  var scale = opts.scale != null ? opts.scale : CONFIG.defaults.scale;
 
   var resolvedPath = path.resolve(outputPath);
 
@@ -329,4 +344,5 @@ module.exports = {
   detectBrowser,
   resetBrowserCache,
   NoBrowserFoundError,
+  CONFIG,
 };

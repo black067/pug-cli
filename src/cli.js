@@ -6,7 +6,7 @@ const path = require('path');
 const pug = require('pug');
 const markupToPug = require('./markup2pug');
 const { htmlToSvg } = require('./html2svg');
-const { htmlToPng, checkBrowserAvailable, NoBrowserFoundError } = require('./html2png');
+const { htmlToPng, checkBrowserAvailable, NoBrowserFoundError, CONFIG } = require('./html2png');
 
 // ============================================================
 // Constants
@@ -104,6 +104,20 @@ function compileAndWrite(filePath, opts) {
 }
 
 /**
+ * Read a file and resolve it to HTML source.
+ * If it's a .pug file, compile Pug → HTML. Otherwise, return raw content.
+ */
+function compilePugFileToHtml(filePath, opts) {
+  const resolved = path.resolve(filePath);
+  const source = fs.readFileSync(resolved, 'utf8');
+  if (filePath.endsWith('.pug')) {
+    const fn = pug.compile(source, buildPugOptions(resolved, opts));
+    return fn(opts.locals || {});
+  }
+  return source;
+}
+
+/**
  * Compile one .pug file (or HTML file) to SVG and write output.
  * For .pug files: Pug → HTML → SVG
  * For .html files: HTML → SVG directly
@@ -116,18 +130,7 @@ async function toSvgAndWrite(filePath, opts) {
   }
 
   try {
-    let source = fs.readFileSync(resolved, 'utf8');
-    let htmlSource;
-
-    // If .pug file, compile to HTML first
-    if (filePath.endsWith('.pug')) {
-      const fn = pug.compile(source, buildPugOptions(resolved, opts));
-      htmlSource = fn(opts.locals || {});
-    } else {
-      // Treat as raw HTML
-      htmlSource = source;
-    }
-
+    const htmlSource = compilePugFileToHtml(filePath, opts);
     const svg = await htmlToSvg(htmlSource, {
       extraFonts: opts.fontPaths || [],
       debug: false,
@@ -155,18 +158,7 @@ async function toPngAndWrite(filePath, opts) {
   }
 
   try {
-    let source = fs.readFileSync(resolved, 'utf8');
-    let htmlSource;
-
-    // If .pug file, compile to HTML first
-    if (filePath.endsWith('.pug')) {
-      const fn = pug.compile(source, buildPugOptions(resolved, opts));
-      htmlSource = fn(opts.locals || {});
-    } else {
-      // Treat as raw HTML
-      htmlSource = source;
-    }
-
+    const htmlSource = compilePugFileToHtml(filePath, opts);
     const outPath = path.join(opts.outDir, path.basename(filePath, path.extname(filePath)) + '.png');
     await htmlToPng(htmlSource, outPath, {
       width: opts.pngWidth,
@@ -338,6 +330,7 @@ function printUsage() {
   console.error('  -h, --help                Display this help message');
   console.error('  -V, --version             Display version information');
   console.error('      --licence             Display license information');
+  console.error('      --config-gen          Generate pug-cli.config.json template in current directory');
   console.error('      --mcp-server           Start MCP (Model Context Protocol) server');
   console.error('');
 }
@@ -375,6 +368,36 @@ function printLicense() {
     ''
   ].join('\n');
   console.log(licenseText);
+}
+
+function generateConfigFile() {
+  var targetPath = path.join(process.cwd(), 'pug-cli.config.json');
+  if (fs.existsSync(targetPath)) {
+    console.error('Config file already exists: ' + targetPath);
+    console.error('Delete it first if you want to regenerate.');
+    process.exit(1);
+  }
+
+  // Generate a commented JSON template from CONFIG defaults.
+  // JSON doesn't support comments, so we use a readable pretty-printed
+  // structure with self-documenting key names.
+  var template = {
+    _comment: 'pug-cli configuration — all keys are optional. Delete this file to revert to built-in conventions.',
+    browser: {
+      _comment: 'Browser detection and launch settings (--to-png only).',
+      searchPaths: CONFIG.browser.searchPaths,
+      launchArgs: CONFIG.browser.launchArgs,
+    },
+    defaults: {
+      _comment: 'Default dimensions and scale for image output (--to-svg / --to-png).',
+      width: CONFIG.defaults.width,
+      height: CONFIG.defaults.height,
+      scale: CONFIG.defaults.scale,
+    },
+  };
+
+  fs.writeFileSync(targetPath, JSON.stringify(template, null, 2) + '\n', 'utf8');
+  console.log('Config generated: ' + targetPath);
 }
 
 // ============================================================
@@ -444,6 +467,9 @@ function main() {
       case '--licence':
         printLicense();
         return;
+      case '--config-gen':
+        generateConfigFile();
+        return;
       case '--mcp-server':
         const { startMcpServer } = require('./mcp-core');
         startMcpServer();
@@ -481,6 +507,8 @@ function main() {
       case '--force-png':
         opts.forcePng = true;
         break;
+      // --width and --height are shared between --to-svg and --to-png.
+      // The two modes are mutually exclusive (validated below), so sharing a single value is safe.
       case '--width':
         i++; if (i >= args.length) { console.error('Error: --width requires a number'); process.exit(EXIT_FAILURE); }
         opts.svgWidth = parseInt(args[i], 10);

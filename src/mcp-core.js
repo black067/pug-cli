@@ -3,6 +3,7 @@
 const pug = require('pug');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const markupToPug = require('./markup2pug');
 const { htmlToSvg } = require('./html2svg');
 const { htmlToPng, checkBrowserAvailable, NoBrowserFoundError } = require('./html2png');
@@ -277,7 +278,7 @@ async function renderHtmlToImageResponse(html, args) {
   }
 
   // Render to PNG and return as base64 data URI
-  var tempDir = require('os').tmpdir();
+  var tempDir = os.tmpdir();
   var tempFile = path.join(tempDir, 'pug-cli-temp-' + Date.now() + '.png');
 
   try {
