@@ -56,6 +56,11 @@ pug-cli --stdin < input.pug
 | `--width <n>` | 画布/视口宽度（像素，默认 800） | |
 | `--height <n>` | 画布/视口高度（像素，默认 600） | |
 | `--font <path>` | 加载额外字体（SVG 时有效，可重复） | |
+| `--browser <path>` / `-B` | 指定浏览器可执行路径（PNG 时有效） | |
+| `--scale <n>` | 设备缩放因子/Retina（PNG 时有效，默认 2） | |
+| `--auto-crop` | 自动裁剪到内容边界（PNG 时有效） | |
+| `--full-page` | 捕获完整滚动页面（PNG 时有效，约定默认 true） | |
+| `--force-png` | 强制 PNG 输出，无浏览器时报错（PNG 时有效） | |
 
 ### I/O 模式
 
@@ -73,6 +78,7 @@ pug-cli --stdin < input.pug
 | `--help` | `-h` | 显示帮助信息 |
 | `--version` | `-V` | 显示版本信息 |
 | `--licence` | | 显示许可证信息 |
+| `--config-gen` | | 生成 `pug-cli.config.json` 配置模板到当前目录 |
 
 ## MCP 支持
 

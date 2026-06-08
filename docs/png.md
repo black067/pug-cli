@@ -18,7 +18,40 @@
 
 > SEA 单文件不包含浏览器引擎。需通过 `node src/cli.js` 运行才能使用 `--to-png`。
 
-## 浏览器检测优先级
+## 配置
+
+### pug-cli.config.json
+
+在项目根目录创建 `pug-cli.config.json`（运行 `pug-cli --config-gen` 生成模板）：
+
+```json
+{
+  "browser": {
+    "searchPaths": ["D:/MyTools/chrome.exe"],
+    "launchArgs": ["--no-sandbox"]
+  },
+  "defaults": {
+    "width": 800,
+    "height": 600,
+    "scale": 2,
+    "fullPage": true
+  },
+  "png": {
+    "wrapperCss": "*{margin:0;padding:0;box-sizing:border-box}body{margin:0;padding:0}svg{display:block}"
+  }
+}
+```
+
+- **`browser.searchPaths`**: 自定义浏览器可执行文件路径列表，替代自动检测
+- **`browser.launchArgs`**: Chromium 启动参数
+- **`defaults`**: 图片输出的默认尺寸、缩放、全页模式
+- **`png.wrapperCss`**: 渲染 HTML 片段时注入的 CSS（可自定义字体、背景等）
+
+配置文件搜索顺序（找到即停止）：
+1. `./pug-cli.config.json`（项目级）
+2. `~/.pug-cli/config.json`（用户级）
+
+### 浏览器检测优先级
 
 `pug-cli` 按以下顺序检测系统浏览器：
 
@@ -26,10 +59,9 @@
 |--------|---------|
 | 1 | `--browser <path>` 显式指定路径 |
 | 2 | 环境变量 `CHROME_PATH` 或 `BROWSER_PATH` |
-| 3 | Playwright 系统 Chrome channel 检测 |
-| 4 | Playwright 系统 Edge channel 检测（Windows） |
-| 5 | 常见安装路径枚举（`C:\Program Files\Google\Chrome\...` 等） |
-| 6 | Playwright 托管浏览器（`npx playwright install chromium`） |
+| 3 | Playwright channel 检测（chrome, msedge, chromium） |
+| 4 | Playwright 托管浏览器（`npx playwright install chromium`） |
+| 5 | 配置文件 `browser.searchPaths` 中列出的路径 |
 
 ## CLI 选项
 
@@ -41,7 +73,7 @@
 | `--height <n>` | | 视口高度（像素，自动从内容检测） | 自动 |
 | `--scale <n>` | | 设备缩放因子（Retina） | 2 |
 | `--auto-crop` | | 自动裁剪到内容实际尺寸 | false |
-| `--full-page` | | 捕获完整滚动页面 | false |
+| `--full-page` | | 捕获完整滚动页面 | true（约定） |
 | `--force-png` | | 强制 PNG，无浏览器时报错退出 | false |
 
 ### 选项说明
@@ -52,7 +84,7 @@
   3. 回退默认 800×600
 - **`--scale`**: 设置 `deviceScaleFactor`，值越大 PNG 越清晰。2 对应 Retina 2x 清晰度。
 - **`--auto-crop`**: 渲染后自动检测 `<body>` 的边界框，将 PNG 裁剪到内容实际尺寸，去除空白边距。
-- **`--full-page`**: 捕获整个滚动页面内容，而不是仅视口区域。
+- **`--full-page`**: 捕获整个滚动页面内容，而不是仅视口区域。约定默认为 `true`，可通过 `pug-cli.config.json` 或显式传参覆盖。
 - **`--force-png`**: 当系统没有 Chromium 浏览器时不降级为 SVG，直接报错退出。
 
 ## 降级策略
@@ -80,8 +112,10 @@ const outputPath = await htmlToPng(
   {
     width: 800,
     height: 600,
-    scale: 2,       // Retina 清晰度
-    autoCrop: true, // 自动裁剪
+    scale: 2,         // Retina 清晰度
+    autoCrop: true,   // 自动裁剪
+    fullPage: true,   // 全页截图（约定默认 true）
+    browserPath: null,// 显式浏览器路径
   }
 );
 ```
