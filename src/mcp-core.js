@@ -249,32 +249,17 @@ async function handleHtmlToSvg(args) {
 }
 
 /**
- * Shared helper: render HTML to an image response (PNG or SVG fallback).
+ * Shared helper: render HTML to PNG and return as base64 data URI.
+ * Throws NoBrowserFoundError if no Chromium browser is available.
  * @param {string} html - The HTML source to render
- * @param {object} args - Image rendering args (width, height, scale, autoCrop, fullPage, browserPath, fonts, debug)
+ * @param {object} args - Image rendering args (width, height, scale, autoCrop, fullPage, browserPath)
  * @returns {object} MCP response content
  */
 async function renderHtmlToImageResponse(html, args) {
-  // Check browser availability
+  // Check browser availability — let it crash if not found
   var browserInfo = checkBrowserAvailable();
   if (!browserInfo.available) {
-    // Fallback to SVG with a note
-    var svg = await htmlToSvg(html, {
-      width: args.width,
-      height: args.height,
-      extraFonts: args.fonts || [],
-      debug: !!args.debug,
-    });
-    return {
-      content: [
-        { type: 'text', text: svg },
-        {
-          type: 'text',
-          text: '[note: No Chromium browser detected; fell back to SVG output. ' +
-            'For PNG output, install Chrome/Edge/Chromium or set the CHROME_PATH environment variable.]',
-        },
-      ],
-    };
+    throw new NoBrowserFoundError();
   }
 
   // Render to PNG and return as base64 data URI.
@@ -340,6 +325,19 @@ async function handlePugToPng(args) {
   var fn = pug.compile(source, opts);
   var html = fn(args.locals || {});
 
+  // Check browser availability — save intermediate HTML for inspection if unavailable
+  var browserInfo = checkBrowserAvailable();
+  if (!browserInfo.available) {
+    var tempHtmlFile = path.join(os.tmpdir(), 'pug-cli-intermediate-' + Date.now() + '.html');
+    fs.writeFileSync(tempHtmlFile, html, 'utf8');
+    throw new Error(
+      'No Chromium browser detected.\n' +
+      'Intermediate HTML saved to: ' + tempHtmlFile + '\n' +
+      'Install Chrome/Edge/Chromium or set CHROME_PATH.\n\n' +
+      '--- Intermediate HTML ---\n' + html
+    );
+  }
+
   return await renderHtmlToImageResponse(html, args);
 }
 
@@ -359,11 +357,11 @@ function startMcpServer() {
         '- **pug_to_js**: Compile Pug → client-side JS function. Use `module: true` for Node.js.',
         '- **html_to_pug**: Convert HTML/XML → Pug syntax.',
         '- **html_to_svg**: Render HTML → SVG (Satori engine, Flexbox CSS). Width/height auto-detected from inline CSS.',
-        '- **html_to_png**: Render HTML → PNG (Playwright headless Chromium). Falls back to SVG if no browser detected. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json if present.',
-        '- **pug_to_png**: Compile Pug → PNG in one step (Pug → HTML → PNG). Falls back to SVG if no browser detected.',
+        '- **html_to_png**: Render HTML → PNG (Playwright headless Chromium). Fails if no browser detected.',
+        '- **pug_to_png**: Compile Pug → PNG in one step (Pug → HTML → PNG). Fails if no browser detected, but saves intermediate HTML for inspection.',
         '',
         '### Tips',
-        '- Pug → SVG: compile with pug_to_html first, then pass the HTML to html_to_svg, or use pug_to_png which will fallback to SVG.',
+        '- Pug → SVG: compile with pug_to_html first, then pass the HTML to html_to_svg.',
         '- Use `pretty: true` for readable HTML output.',
         '- Pass template variables via `locals`: {"title": "Hello"}.',
         '- For Pug extends/include, set `filename` to the template file path.',
@@ -440,7 +438,7 @@ function startMcpServer() {
         },
         {
           name: 'html_to_png',
-          description: 'Render HTML to PNG via Playwright (headless Chromium). Falls back to SVG if no browser is detected. Uses system-installed Chrome/Edge/Chromium. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json.',
+          description: 'Render HTML to PNG via Playwright (headless Chromium). Fails if no browser is detected. Uses system-installed Chrome/Edge/Chromium. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -457,7 +455,7 @@ function startMcpServer() {
         },
         {
           name: 'pug_to_png',
-          description: 'Compile Pug to PNG in one step. Accepts inline Pug source or .pug file path. Internally compiles to HTML, then renders to PNG via Playwright. Falls back to SVG if no browser is detected. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json.',
+          description: 'Compile Pug to PNG in one step. Accepts inline Pug source or .pug file path. Internally compiles to HTML, then renders to PNG via Playwright. Fails if no browser is detected, but saves intermediate HTML for inspection. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -472,8 +470,6 @@ function startMcpServer() {
               autoCrop: { type: 'boolean', description: 'Auto-crop to content bounding box.' },
               fullPage: { type: 'boolean', description: 'Capture full scrollable page. Config default: true. Set to false to restrict to viewport.' },
               browserPath: { type: 'string', description: 'Explicit browser executable path.' },
-              fonts: { type: 'array', items: { type: 'string' }, description: 'Extra font file paths for SVG fallback (TTF/OTF/WOF).' },
-              debug: { type: 'boolean', description: 'Enable debug layout (SVG fallback only).' },
             },
             required: ['source'],
           },

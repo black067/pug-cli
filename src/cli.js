@@ -6,7 +6,7 @@ const path = require('path');
 const pug = require('pug');
 const markupToPug = require('./markup2pug');
 const { htmlToSvg } = require('./html2svg');
-const { htmlToPng, checkBrowserAvailable, NoBrowserFoundError, CONFIG } = require('./html2png');
+const { htmlToPng, checkBrowserAvailable, CONFIG } = require('./html2png');
 
 // ============================================================
 // Constants
@@ -173,10 +173,6 @@ async function toPngAndWrite(filePath, opts) {
     console.log('  wrote ' + outPath);
     return true;
   } catch (err) {
-    if (err instanceof NoBrowserFoundError) {
-      // Propagate for fallback handling
-      throw err;
-    }
     console.error('Error converting to PNG ' + filePath + ':', err.message || err);
     return false;
   }
@@ -326,7 +322,6 @@ function printUsage() {
   console.error('      --scale <n>           Device scale factor / Retina (default: 2)');
   console.error('      --auto-crop           Auto-crop PNG to content bounding box');
   console.error('      --full-page           Capture full scrollable page as one PNG');
-  console.error('      --force-png           Require PNG output (fail if no browser)');
   console.error('');
   console.error('Info:');
   console.error('  -h, --help                Display this help message');
@@ -712,53 +707,27 @@ function main() {
     return;
   }
 
-  // PNG mode: convert Pug/HTML → PNG (with SVG fallback)
+  // PNG mode: convert Pug/HTML → PNG
   if (opts.toPng) {
-    var pngOk = true;
     var browserInfo = checkBrowserAvailable(opts.browserPath);
-    var useSvgFallback = false;
-
     if (!browserInfo.available) {
-      if (opts.forcePng) {
-        console.error('Error: --force-png but no Chromium browser detected.');
-        console.error('  Install Chrome/Edge/Chromium, or use --browser <path>');
-        process.exit(EXIT_FAILURE);
-      }
-      console.warn('');
-      console.warn('⚠  No Chromium browser detected — falling back to SVG output.');
-      console.warn('   For PNG output, install Chrome/Edge/Chromium or specify:');
-      console.warn('     --browser <path>');
-      console.warn('     CHROME_PATH environment variable');
-      console.warn('');
-      useSvgFallback = true;
+      console.error('Error: No Chromium browser detected.');
+      console.error('  Install Chrome/Edge/Chromium, or specify:');
+      console.error('    --browser <path>');
+      console.error('    CHROME_PATH environment variable');
+      process.exit(EXIT_FAILURE);
     }
 
-    if (useSvgFallback) {
-      // Fallback to SVG
-      var svgPending = opts.files.map(function (f) {
-        return toSvgAndWrite(f, opts).then(function (r) {
-          if (!r) pngOk = false;
-        });
+    var pngOk = true;
+    var pngPending = opts.files.map(function (f) {
+      return toPngAndWrite(f, opts).catch(function (err) {
+        console.error('Error converting to PNG ' + f + ':', err.message || err);
+        pngOk = false;
       });
-      Promise.all(svgPending).then(function () {
-        if (!pngOk) process.exit(EXIT_FAILURE);
-      });
-    } else {
-      // Render PNG
-      var pngPending = opts.files.map(function (f) {
-        return toPngAndWrite(f, opts).catch(function (err) {
-          if (err instanceof NoBrowserFoundError) {
-            console.error('Error: browser not found during rendering: ' + err.message);
-          } else {
-            console.error('Error converting to PNG ' + f + ':', err.message || err);
-          }
-          pngOk = false;
-        });
-      });
-      Promise.all(pngPending).then(function () {
-        if (!pngOk) process.exit(EXIT_FAILURE);
-      });
-    }
+    });
+    Promise.all(pngPending).then(function () {
+      if (!pngOk) process.exit(EXIT_FAILURE);
+    });
     return;
   }
 
