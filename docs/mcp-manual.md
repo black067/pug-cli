@@ -145,7 +145,10 @@ node dist/pug-cli-bundled.js --mcp-server
 
 ### 5. `html_to_png` — HTML 渲染为 PNG
 
-通过 Playwright 无头 Chromium 渲染 HTML 为 PNG 图片。返回 base64 编码的 `data:image/png` URI。
+通过 Playwright 无头 Chromium 渲染 HTML 为 PNG 图片。
+
+- 不指定 `output` → 返回 base64 编码的 `data:image/png` URI
+- 指定 `output` → 将 PNG 写入磁盘指定路径，同时仍返回 base64 URI
 
 **⚠️ 需要系统安装 Chrome / Edge / Chromium。** 若未检测到浏览器则报错。
 
@@ -154,6 +157,7 @@ node dist/pug-cli-bundled.js --mcp-server
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `source` | `string` | ✅ | — | HTML 源码或文件路径（自动检测） |
+| `output` | `string` | — | — | 输出文件路径。提供时 PNG 写入磁盘并持久保留；省略时仅返回 base64 data URI |
 | `width` | `number` | — | 自动检测 → 800 | 视口宽度（像素） |
 | `height` | `number` | — | 自动检测 → 600 | 视口高度（像素） |
 | `scale` | `number` | — | 2 | 设备缩放因子（Retina） |
@@ -161,7 +165,7 @@ node dist/pug-cli-bundled.js --mcp-server
 | `fullPage` | `boolean` | — | true（配置） | 截取完整可滚动页面，设为 false 则限制为视口 |
 | `browserPath` | `string` | — | 自动检测 | 指定浏览器可执行文件路径 |
 
-**返回：** MCP `resource` 类型内容，含 `data:image/png;base64,...` 格式的图片。
+**返回：** MCP `resource` 类型内容，含 `data:image/png;base64,...` 格式的图片。若指定了 `output`，额外附带 `{"written": "<output路径>"}` 文本确认。
 
 **浏览器检测优先级：**
 1. `browserPath` 参数显式指定
@@ -178,11 +182,15 @@ node dist/pug-cli-bundled.js --mcp-server
 
 `pug_to_html` + `html_to_png` 的组合。接受 Pug 源码，内部自动编译为 HTML 再渲染为 PNG。
 
+- 不指定 `output` → 返回 base64 编码的 `data:image/png` URI
+- 指定 `output` → 将 PNG 写入磁盘指定路径，同时仍返回 base64 URI
+
 **参数：**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `source` | `string` | ✅ | — | Pug 源码或 `.pug` 文件路径（自动检测） |
+| `output` | `string` | — | — | 输出文件路径。提供时 PNG 写入磁盘并持久保留；省略时仅返回 base64 data URI |
 | `filename` | `string` | — | — | Pug 虚拟文件名（使用 `extends`/`include` 时必填） |
 | `pretty` | `boolean` | — | false | 美化中间 HTML 输出 |
 | `doctype` | `string` | — | — | 覆盖 doctype |
@@ -194,7 +202,7 @@ node dist/pug-cli-bundled.js --mcp-server
 | `fullPage` | `boolean` | — | true | 全页截图 |
 | `browserPath` | `string` | — | 自动检测 | 浏览器路径 |
 
-**返回：** MCP `resource` 类型内容，含 `data:image/png;base64,...`。
+**返回：** MCP `resource` 类型内容，含 `data:image/png;base64,...`。若指定了 `output`，额外附带 `{"written": "<output路径>"}` 文本确认。
 
 **浏览器不可用时的行为：** 与 `html_to_png` 不同，`pug_to_png` 在浏览器不可用时**不会直接报错**，而是：
 1. 将编译后的中间 HTML 保存到系统临时目录

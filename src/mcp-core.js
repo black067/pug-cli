@@ -250,9 +250,10 @@ async function handleHtmlToSvg(args) {
 
 /**
  * Shared helper: render HTML to PNG and return as base64 data URI.
+ * When args.output is provided, writes the PNG to that path and skips temp cleanup.
  * Throws NoBrowserFoundError if no Chromium browser is available.
  * @param {string} html - The HTML source to render
- * @param {object} args - Image rendering args (width, height, scale, autoCrop, fullPage, browserPath)
+ * @param {object} args - Image rendering args (width, height, scale, autoCrop, fullPage, browserPath, output)
  * @returns {object} MCP response content
  */
 async function renderHtmlToImageResponse(html, args) {
@@ -262,12 +263,18 @@ async function renderHtmlToImageResponse(html, args) {
     throw new NoBrowserFoundError();
   }
 
-  // Render to PNG and return as base64 data URI.
-  // Write to OS temp dir — the file is deleted in finally below.
-  var tempFile = path.join(os.tmpdir(), 'pug-cli-temp-' + Date.now() + '.png');
+  // Determine output path: user-specified → write to disk and keep; otherwise temp → base64 only
+  var outputPath = args.output ? path.resolve(args.output) : null;
+  var pngFile = outputPath || path.join(os.tmpdir(), 'pug-cli-temp-' + Date.now() + '.png');
+  var isTemp = !outputPath;
+
+  // Ensure output directory exists
+  if (outputPath) {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  }
 
   try {
-    await htmlToPng(html, tempFile, {
+    await htmlToPng(html, pngFile, {
       width: args.width,
       height: args.height,
       scale: args.scale,
@@ -276,24 +283,34 @@ async function renderHtmlToImageResponse(html, args) {
       browserPath: args.browserPath,
     });
 
-    var pngBuffer = fs.readFileSync(tempFile);
+    var pngBuffer = fs.readFileSync(pngFile);
     var base64 = pngBuffer.toString('base64');
 
-    return {
-      content: [
-        {
-          type: 'resource',
-          resource: {
-            text: base64,
-            uri: 'data:image/png;base64,' + base64,
-            mimeType: 'image/png',
-          },
+    var content = [
+      {
+        type: 'resource',
+        resource: {
+          text: base64,
+          uri: 'data:image/png;base64,' + base64,
+          mimeType: 'image/png',
         },
-      ],
-    };
+      },
+    ];
+
+    // When written to a user-specified disk path, append a text summary
+    if (outputPath) {
+      content.push({
+        type: 'text',
+        text: JSON.stringify({ written: outputPath }),
+      });
+    }
+
+    return { content: content };
   } finally {
-    // Clean up temp file
-    try { fs.unlinkSync(tempFile); } catch (_) {}
+    // Only clean up temp files, never user-specified output
+    if (isTemp) {
+      try { fs.unlinkSync(pngFile); } catch (_) {}
+    }
   }
 }
 
@@ -357,8 +374,8 @@ function startMcpServer() {
         '- **pug_to_js**: Compile Pug → client-side JS function. Use `module: true` for Node.js.',
         '- **html_to_pug**: Convert HTML/XML → Pug syntax.',
         '- **html_to_svg**: Render HTML → SVG (Satori engine, Flexbox CSS). Width/height auto-detected from inline CSS.',
-        '- **html_to_png**: Render HTML → PNG (Playwright headless Chromium). Fails if no browser detected.',
-        '- **pug_to_png**: Compile Pug → PNG in one step (Pug → HTML → PNG). Fails if no browser detected, but saves intermediate HTML for inspection.',
+        '- **html_to_png**: Render HTML → PNG (Playwright headless Chromium). Set `output` to a file path to write to disk. Fails if no browser detected.',
+        '- **pug_to_png**: Compile Pug → PNG in one step (Pug → HTML → PNG). Set `output` to a file path to write to disk. Fails if no browser detected, but saves intermediate HTML for inspection.',
         '',
         '### Tips',
         '- Pug → SVG: compile with pug_to_html first, then pass the HTML to html_to_svg.',
@@ -438,7 +455,7 @@ function startMcpServer() {
         },
         {
           name: 'html_to_png',
-          description: 'Render HTML to PNG via Playwright (headless Chromium). Fails if no browser is detected. Uses system-installed Chrome/Edge/Chromium. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json.',
+          description: 'Render HTML to PNG via Playwright (headless Chromium). Fails if no browser is detected. Uses system-installed Chrome/Edge/Chromium. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json. Set `output` to write the PNG to a user-specified file path; otherwise the image is returned as a base64 data URI.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -449,13 +466,14 @@ function startMcpServer() {
               autoCrop: { type: 'boolean', description: 'Auto-crop to content bounding box.' },
               fullPage: { type: 'boolean', description: 'Capture full scrollable page. Config default: true. Set to false to restrict to viewport.' },
               browserPath: { type: 'string', description: 'Explicit browser executable path.' },
+              output: { type: 'string', description: 'File path to write the PNG to disk. When provided, the file is persisted; otherwise only a base64 data URI is returned.' },
             },
             required: ['source'],
           },
         },
         {
           name: 'pug_to_png',
-          description: 'Compile Pug to PNG in one step. Accepts inline Pug source or .pug file path. Internally compiles to HTML, then renders to PNG via Playwright. Fails if no browser is detected, but saves intermediate HTML for inspection. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json.',
+          description: 'Compile Pug to PNG in one step. Accepts inline Pug source or .pug file path. Internally compiles to HTML, then renders to PNG via Playwright. Fails if no browser is detected, but saves intermediate HTML for inspection. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json. Set `output` to write the PNG to a user-specified file path; otherwise the image is returned as a base64 data URI.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -470,6 +488,7 @@ function startMcpServer() {
               autoCrop: { type: 'boolean', description: 'Auto-crop to content bounding box.' },
               fullPage: { type: 'boolean', description: 'Capture full scrollable page. Config default: true. Set to false to restrict to viewport.' },
               browserPath: { type: 'string', description: 'Explicit browser executable path.' },
+              output: { type: 'string', description: 'File path to write the PNG to disk. When provided, the file is persisted; otherwise only a base64 data URI is returned.' },
             },
             required: ['source'],
           },
