@@ -1,7 +1,7 @@
 /**
  * Bundle pug-cli into a single self-contained JS file using esbuild.
- * All pug workspace dependencies are inlined — only Node.js built-in modules
- * are kept external.
+ * All dependencies (including playwright-core) are inlined — only Node.js
+ * built-in modules are kept external.
  *
  * Usage: node scripts/bundle.js
  */
@@ -25,6 +25,12 @@ function ensureStubModule(name, stubCode) {
 ensureStubModule('uglify-js', `exports.minify = function() { return { code: '' }; };`);
 ensureStubModule('clean-css', `module.exports = function() { return { styles: '' }; };`);
 
+// playwright-core stub modules — these are optional lazy-loaded dependencies
+// (BiDi protocol for Firefox, Electron support) that are never used in our
+// Chromium-based HTML→PNG rendering path.
+ensureStubModule('chromium-bidi', `module.exports = {};`);
+ensureStubModule('electron', `module.exports = {};`);
+
 async function main() {
   // All Node.js built-in modules to keep external
   const nodeBuiltins = [
@@ -32,11 +38,14 @@ async function main() {
     'child_process', 'events', 'stream', 'buffer', 'string_decoder',
     'tty', 'url', 'crypto', 'module', 'vm', 'net', 'http', 'https',
     'querystring', 'punycode', 'readline', 'timers', 'zlib',
+    'dns', 'tls', 'async_hooks', 'inspector', 'v8',
+    'perf_hooks', 'worker_threads', 'constants',
   ];
 
-  // playwright-core must remain external — it contains native binaries (.node files)
-  // that esbuild cannot bundle. It's also not useful in SEA binary (needs system browser).
-  const externalDeps = ['playwright-core'];
+  // playwright-core v1.60.0 is pure JS (zero .node files, zero dependencies).
+  // It is now inlined into the bundle so the SEA binary can use --to-png
+  // as long as a system Chrome/Edge/Chromium browser is available.
+  const externalDeps = [];
 
   console.log('Bundling pug-cli...');
 
@@ -59,6 +68,33 @@ async function main() {
           build.onResolve({ filter: /^clean-css$/ }, () => {
             return { path: path.join(stubModulesDir, 'clean-css', 'index.js') };
           });
+          // playwright-core optional lazy deps (BiDi + Electron)
+          build.onResolve({ filter: /^chromium-bidi/ }, () => {
+            return { path: path.join(stubModulesDir, 'chromium-bidi', 'index.js') };
+          });
+          build.onResolve({ filter: /^electron/ }, () => {
+            return { path: path.join(stubModulesDir, 'electron', 'index.js') };
+          });
+        },
+      },
+      // playwright-core internally computes packageRoot = path.join(__dirname, "..")
+      // to find its own package.json. In the bundled context __dirname is the bundle
+      // directory, not playwright-core's. Patch the computation to use the real path.
+      {
+        name: 'patch-pw-package-root',
+        setup(build) {
+          build.onLoad({ filter: /coreBundle\.js$/ }, async (args) => {
+            const pwCoreDir = path.resolve(__dirname, '..', 'node_modules', 'playwright-core');
+            let contents = await fs.promises.readFile(args.path, 'utf8');
+            // Replace the dynamic __dirname-based path with the real absolute path.
+            // The pattern in coreBundle.js is:
+            //   packageRoot = import_path8.default.join(__dirname, "..");
+            contents = contents.replace(
+              'packageRoot = import_path8.default.join(__dirname, "..")',
+              'packageRoot = "' + pwCoreDir.replace(/\\/g, '\\\\') + '"'
+            );
+            return { contents, loader: 'js' };
+          });
         },
       },
     ],
@@ -67,7 +103,7 @@ async function main() {
     },
     mainFields: ['main'],
     sourcemap: false,
-    minify: false,
+    minify: true,
     logLevel: 'info',
   });
 

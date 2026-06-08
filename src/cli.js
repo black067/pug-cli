@@ -132,6 +132,8 @@ async function toSvgAndWrite(filePath, opts) {
   try {
     const htmlSource = compilePugFileToHtml(filePath, opts);
     const svg = await htmlToSvg(htmlSource, {
+      width: opts.svgWidth,
+      height: opts.svgHeight,
       extraFonts: opts.fontPaths || [],
       debug: false,
     });
