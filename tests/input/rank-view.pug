@@ -51,24 +51,18 @@ html(lang="zh-CN", style="display: flex; flex-direction: column;")
         span.color-primary(style="font-size: 14px; font-weight: bold; white-space: nowrap;") #{score.toLocaleString()}
 
     //- ═══════════════════════════════════════════
-    //- 顶部标题栏
+    //- 顶部标题栏（含浮动奖励入口）
     //- ═══════════════════════════════════════════
-    header.bg-header(style="display: flex; align-items: center; justify-content: center; padding: 12px 16px;")
+    header.bg-header(style="display: flex; align-items: center; justify-content: center; padding: 12px 16px; position: relative;")
       span.text-primary(style="font-size: 18px; font-weight: bold;") #{rankTitle}
+      //- 浮动奖励按钮（右上角：圆底 icon + 底部文字）
+      div(style="position: absolute; right: 12px; top: 4px; display: flex; flex-direction: column; align-items: center; gap: 2px;")
+        div(style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #F59E0B, #E67E22); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(245,158,11,0.35);")
+          span(style="font-size: 20px;") 🎁
+        span(style="font-size: 10px; font-weight: bold; color: #F59E0B;") 奖励预览
 
     //- ═══════════════════════════════════════════
-    //- Tab 切换栏
-    //- ═══════════════════════════════════════════
-    nav.nav-bg(style="display: flex; border-bottom: 1px solid #E5E7EB;")
-      each tab, i in tabs
-        - var isActive = i === activeTab
-        div(style="flex: 1; text-align: center; padding: 10px 0; cursor: pointer; position: relative; display: flex; flex-direction: column; align-items: center;")
-          span(class=isActive ? 'nav-active' : 'nav-inactive' style="font-size: 14px; font-weight: "+ (isActive ? 'bold' : 'normal') + ";") #{tab}
-          if isActive
-            div.nav-indicator(style="position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 24px; height: 3px; border-radius: 2px; display: flex;")
-
-    //- ═══════════════════════════════════════════
-    //- 主内容区（可滚动）
+    //- 主内容区
     //- ═══════════════════════════════════════════
     main(style="flex: 1; overflow: hidden; display: flex; flex-direction: column;")
 
@@ -121,16 +115,23 @@ html(lang="zh-CN", style="display: flex; flex-direction: column;")
         each item in rankList
           +rankRow(item.rank, item.name, item.level, item.score, false)
 
-    //- ═══════════════════════════════════════════
-    //- 底部固定区
-    //- ═══════════════════════════════════════════
-    footer(style="flex-shrink: 0; display: flex; flex-direction: column;")
-      //- 我的排名
-      hr.divider(style="border: none; border-bottom: 1px solid #E5E7EB;")
-      div(style="padding: 0; display: flex; flex-direction: column;")
-        +rankRow(myRank.rank, myRank.name, myRank.level, myRank.score, true)
+      //- ── 我的排名 ─────────────────────────────
+      hr.divider(style="margin: 0; border: none; border-bottom: 1px solid #E5E7EB;")
+      +rankRow(myRank.rank, myRank.name, myRank.level, myRank.score, true)
 
-      //- 底部按钮栏
-      div.bg-footer(style="display: flex; gap: 12px; padding: 10px 16px; border-top: 1px solid #E5E7EB;")
-        button.btn-secondary-bg.btn-secondary-text(style="width: 40px; height: 40px; padding: 0; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;") ◀
-        button.btn-primary-bg.btn-primary-text(style="flex: 1; padding: 12px 0; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center;") 🎁 奖励预览
+    //- ═══════════════════════════════════════════
+    //- 底部 Tab 切换栏（拇指操作区）
+    //- ═══════════════════════════════════════════
+    nav.nav-bg(style="display: flex; border-top: 1px solid #E5E7EB;")
+      each tab, i in tabs
+        - var isActive = i === activeTab
+        div(style="flex: 1; text-align: center; padding: 12px 0; cursor: pointer; position: relative; display: flex; flex-direction: column; align-items: center;")
+          span(class=isActive ? 'nav-active' : 'nav-inactive' style="font-size: 14px; font-weight: "+ (isActive ? 'bold' : 'normal') + ";") #{tab}
+          if isActive
+            div.nav-indicator(style="position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 24px; height: 3px; border-radius: 2px;")
+
+    //- ═══════════════════════════════════════════
+    //- 底部操作栏
+    //- ═══════════════════════════════════════════
+    div.bg-footer(style="display: flex; padding: 8px 16px; border-top: 1px solid #E5E7EB;")
+      button.btn-secondary-bg.btn-secondary-text(style="width: 40px; height: 40px; padding: 0; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;") ◀
