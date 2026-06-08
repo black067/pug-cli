@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const markupToPug = require('./markup2pug');
 const { htmlToSvg } = require('./html2svg');
+const { htmlToPng, checkBrowserAvailable, NoBrowserFoundError } = require('./html2png');
 const { Server } = require('@modelcontextprotocol/sdk/server');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const {
@@ -246,6 +247,72 @@ async function handleHtmlToSvg(args) {
   return { content: [{ type: 'text', text: svg }] };
 }
 
+async function handleHtmlToPng(args) {
+  var htmlSource = args.source;
+
+  // Auto-detect: if source is an existing file path, read it
+  var resolved = path.resolve(htmlSource);
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+    htmlSource = fs.readFileSync(resolved, 'utf8');
+  }
+
+  // Check browser availability
+  var browserInfo = checkBrowserAvailable();
+  if (!browserInfo.available) {
+    // Fallback to SVG with a note
+    var svg = await htmlToSvg(htmlSource, {
+      width: args.width,
+      height: args.height,
+      extraFonts: args.fonts || [],
+      debug: !!args.debug,
+    });
+    return {
+      content: [
+        { type: 'text', text: svg },
+        {
+          type: 'text',
+          text: '[note: No Chromium browser detected; fell back to SVG output. ' +
+            'For PNG output, install Chrome/Edge/Chromium or set the CHROME_PATH environment variable.]',
+        },
+      ],
+    };
+  }
+
+  // Render to PNG and return as base64 data URI
+  var tempDir = require('os').tmpdir();
+  var tempFile = path.join(tempDir, 'pug-cli-temp-' + Date.now() + '.png');
+
+  try {
+    await htmlToPng(htmlSource, tempFile, {
+      width: args.width,
+      height: args.height,
+      scale: args.scale || 2,
+      autoCrop: !!args.autoCrop,
+      fullPage: !!args.fullPage,
+      browserPath: args.browserPath,
+    });
+
+    var pngBuffer = fs.readFileSync(tempFile);
+    var base64 = pngBuffer.toString('base64');
+
+    return {
+      content: [
+        {
+          type: 'resource',
+          resource: {
+            text: base64,
+            uri: 'data:image/png;base64,' + base64,
+            mimeType: 'image/png',
+          },
+        },
+      ],
+    };
+  } finally {
+    // Clean up temp file
+    try { fs.unlinkSync(tempFile); } catch (_) {}
+  }
+}
+
 // ============================================================
 // Server startup
 // ============================================================
@@ -262,6 +329,7 @@ function startMcpServer() {
         '- **pug_to_js**: Compile Pug → client-side JS function. Use `module: true` for Node.js.',
         '- **html_to_pug**: Convert HTML/XML → Pug syntax.',
         '- **html_to_svg**: Render HTML → SVG (Satori engine, Flexbox CSS).',
+        '- **html_to_png**: Render HTML → PNG (Playwright headless Chromium). Falls back to SVG if no browser detected.',
         '',
         '### Tips',
         '- Pug → SVG: compile with pug_to_html first, then pass the HTML to html_to_svg.',
@@ -337,6 +405,23 @@ function startMcpServer() {
             required: ['source'],
           },
         },
+        {
+          name: 'html_to_png',
+          description: 'Render HTML to PNG via Playwright (headless Chromium). Falls back to SVG if no browser is detected. Uses system-installed Chrome/Edge/Chromium.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              source: { type: 'string', description: 'HTML source code or a file path to read.' },
+              width: { type: 'number', description: 'Viewport width in pixels (default: 800).' },
+              height: { type: 'number', description: 'Viewport height in pixels (default: 600).' },
+              scale: { type: 'number', description: 'Device scale factor / Retina (default: 2).' },
+              autoCrop: { type: 'boolean', description: 'Auto-crop to content bounding box.' },
+              fullPage: { type: 'boolean', description: 'Capture full scrollable page.' },
+              browserPath: { type: 'string', description: 'Explicit browser executable path.' },
+            },
+            required: ['source'],
+          },
+        },
       ],
     };
   });
@@ -354,6 +439,8 @@ function startMcpServer() {
           return handleHtmlToPug(args);
         case 'html_to_svg':
           return await handleHtmlToSvg(args);
+        case 'html_to_png':
+          return await handleHtmlToPng(args);
         default:
           throw new Error('Unknown tool: ' + name);
       }

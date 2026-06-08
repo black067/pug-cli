@@ -1,6 +1,6 @@
 {
   "name": "pug-cli",
-  "version": "1.0.0",
+  "version": "1.6.0",
   "description": "Standalone CLI tool for Pug template engine",
   "type": "commonjs",
   "main": "src/cli.js",
@@ -26,6 +26,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "htmlparser2": "^12.0.0",
+    "playwright-core": "^1.60.0",
     "satori": "^0.26.0",
     "satori-html": "^0.3.2"
   }

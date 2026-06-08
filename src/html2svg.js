@@ -282,4 +282,5 @@ async function jsxToSvg(jsxObject, opts) {
 module.exports = {
   htmlToSvg,
   jsxToSvg,
+  autoDetectDimensions,
 };

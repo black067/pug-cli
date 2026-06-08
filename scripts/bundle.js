@@ -34,6 +34,10 @@ async function main() {
     'querystring', 'punycode', 'readline', 'timers', 'zlib',
   ];
 
+  // playwright-core must remain external — it contains native binaries (.node files)
+  // that esbuild cannot bundle. It's also not useful in SEA binary (needs system browser).
+  const externalDeps = ['playwright-core'];
+
   console.log('Bundling pug-cli...');
 
   const result = await esbuild.build({
@@ -43,7 +47,7 @@ async function main() {
     target: ['node20'],
     format: 'cjs',
     outfile: path.resolve(__dirname, '..', 'dist', 'pug-cli-bundled.js'),
-    external: nodeBuiltins,
+    external: nodeBuiltins.concat(externalDeps),
     plugins: [
       // Replace optional heavy deps with lightweight stubs
       {

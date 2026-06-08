@@ -6,6 +6,7 @@ const path = require('path');
 const pug = require('pug');
 const markupToPug = require('./markup2pug');
 const { htmlToSvg } = require('./html2svg');
+const { htmlToPng, checkBrowserAvailable, NoBrowserFoundError } = require('./html2png');
 
 // ============================================================
 // Constants
@@ -141,6 +142,53 @@ async function toSvgAndWrite(filePath, opts) {
 }
 
 /**
+ * Compile one .pug file (or HTML file) to PNG and write output.
+ * For .pug files: Pug → HTML → PNG via Playwright
+ * For .html files: HTML → PNG directly
+ * Falls back to SVG if no browser is available (unless forcePng is set).
+ */
+async function toPngAndWrite(filePath, opts) {
+  const resolved = path.resolve(filePath);
+  if (!fs.existsSync(resolved)) {
+    console.error('Error: file not found: ' + filePath);
+    return false;
+  }
+
+  try {
+    let source = fs.readFileSync(resolved, 'utf8');
+    let htmlSource;
+
+    // If .pug file, compile to HTML first
+    if (filePath.endsWith('.pug')) {
+      const fn = pug.compile(source, buildPugOptions(resolved, opts));
+      htmlSource = fn(opts.locals || {});
+    } else {
+      // Treat as raw HTML
+      htmlSource = source;
+    }
+
+    const outPath = path.join(opts.outDir, path.basename(filePath, path.extname(filePath)) + '.png');
+    await htmlToPng(htmlSource, outPath, {
+      width: opts.pngWidth,
+      height: opts.pngHeight,
+      scale: opts.pngScale,
+      autoCrop: opts.autoCrop,
+      fullPage: opts.fullPage,
+      browserPath: opts.browserPath,
+    });
+    console.log('  wrote ' + outPath);
+    return true;
+  } catch (err) {
+    if (err instanceof NoBrowserFoundError) {
+      // Propagate for fallback handling
+      throw err;
+    }
+    console.error('Error converting to PNG ' + filePath + ':', err.message || err);
+    return false;
+  }
+}
+
+/**
  * Reverse-convert an HTML or XML file to Pug.
  * Mode is auto-detected from file content.
  */
@@ -265,18 +313,26 @@ function printUsage() {
   console.error('');
   console.error('Extensibility:');
   console.error('  -f, --filter <name=mod>   Register a filter (e.g. md=jstransformer-markdown-it)');
-  console.error('  -P, --plugin <module>     Load a pug plugin module (repeatable)');
+  console.error('      --plugin <module>     Load a pug plugin module (repeatable)');
   console.error('');
   console.error('I/O modes:');
   console.error('  -w, --watch               Watch files for changes');
   console.error('      --stdin               Read template from stdin');
   console.error('  -R, --reverse             Convert HTML/XML file to Pug (auto-detect mode)');
   console.error('  -S, --to-svg              Convert .pug or .html to SVG (via Satori)');
+  console.error('  -P, --to-png              Convert .pug or .html to PNG (via Playwright)');
   console.error('');
-  console.error('SVG options (with --to-svg):');
-  console.error('      --width <n>           SVG canvas width (default: 800)');
-  console.error('      --height <n>          SVG canvas height (default: 600)');
-  console.error('      --font <path>         Load additional TTF/OTF/WOFF font (repeatable)');
+  console.error('Image output options (with --to-svg or --to-png):');
+  console.error('      --width <n>           Canvas width in px (default: 800)');
+  console.error('      --height <n>          Canvas height in px (default: 600)');
+  console.error('      --font <path>         Load additional TTF/OTF/WOFF font (repeatable, SVG only)');
+  console.error('');
+  console.error('PNG options (with --to-png):');
+  console.error('  -B, --browser <path>     Specify browser executable path');
+  console.error('      --scale <n>           Device scale factor / Retina (default: 2)');
+  console.error('      --auto-crop           Auto-crop PNG to content bounding box');
+  console.error('      --full-page           Capture full scrollable page as one PNG');
+  console.error('      --force-png           Require PNG output (fail if no browser)');
   console.error('');
   console.error('Info:');
   console.error('  -h, --help                Display this help message');
@@ -342,10 +398,19 @@ function main() {
     watch: false,
     reverse: false,
     toSvg: false,
-    // SVG
+    toPng: false,
+    forcePng: false,
+    // Image output
     svgWidth: undefined,
     svgHeight: undefined,
     fontPaths: [],
+    // PNG
+    pngWidth: undefined,
+    pngHeight: undefined,
+    pngScale: 2,
+    autoCrop: false,
+    fullPage: false,
+    browserPath: undefined,
     // Compilation (native pug options)
     pretty: false,
     compileDebug: true,
@@ -404,24 +469,50 @@ function main() {
         opts.reverse = true;
         break;
 
-      // --- SVG conversion ---
+      // --- Image conversion ---
       case '-S':
       case '--to-svg':
         opts.toSvg = true;
         break;
+      case '-P':
+      case '--to-png':
+        opts.toPng = true;
+        break;
+      case '--force-png':
+        opts.forcePng = true;
+        break;
       case '--width':
         i++; if (i >= args.length) { console.error('Error: --width requires a number'); process.exit(EXIT_FAILURE); }
         opts.svgWidth = parseInt(args[i], 10);
+        opts.pngWidth = opts.svgWidth;
         if (isNaN(opts.svgWidth) || opts.svgWidth <= 0) { console.error('Error: --width must be a positive number'); process.exit(EXIT_FAILURE); }
         break;
       case '--height':
         i++; if (i >= args.length) { console.error('Error: --height requires a number'); process.exit(EXIT_FAILURE); }
         opts.svgHeight = parseInt(args[i], 10);
+        opts.pngHeight = opts.svgHeight;
         if (isNaN(opts.svgHeight) || opts.svgHeight <= 0) { console.error('Error: --height must be a positive number'); process.exit(EXIT_FAILURE); }
         break;
       case '--font':
         i++; if (i >= args.length) { console.error('Error: --font requires a file path'); process.exit(EXIT_FAILURE); }
         opts.fontPaths.push(args[i]);
+        break;
+      // --- PNG-specific options ---
+      case '-B':
+      case '--browser':
+        i++; if (i >= args.length) { console.error('Error: --browser requires a file path'); process.exit(EXIT_FAILURE); }
+        opts.browserPath = path.resolve(args[i]);
+        break;
+      case '--scale':
+        i++; if (i >= args.length) { console.error('Error: --scale requires a number'); process.exit(EXIT_FAILURE); }
+        opts.pngScale = parseInt(args[i], 10);
+        if (isNaN(opts.pngScale) || opts.pngScale <= 0) { console.error('Error: --scale must be a positive number'); process.exit(EXIT_FAILURE); }
+        break;
+      case '--auto-crop':
+        opts.autoCrop = true;
+        break;
+      case '--full-page':
+        opts.fullPage = true;
         break;
 
       // --- Compilation options (native pug) ---
@@ -496,7 +587,6 @@ function main() {
           }
         }
         break;
-      case '-P':
       case '--plugin':
         i++; if (i >= args.length) { console.error('Error: --plugin requires a module path'); process.exit(EXIT_FAILURE); }
         try {
@@ -535,9 +625,37 @@ function main() {
     process.exit(EXIT_FAILURE);
   }
 
+  // Handle conflicting output modes
+  if (opts.toSvg && opts.toPng) {
+    console.error('Error: --to-svg and --to-png cannot be used together');
+    process.exit(EXIT_FAILURE);
+  }
+
   // Handle SVG-only flags without --to-svg
   if (!opts.toSvg && (opts.fontPaths.length > 0)) {
     console.error('Error: --font requires --to-svg');
+    process.exit(EXIT_FAILURE);
+  }
+
+  // Handle PNG-only flags without --to-png
+  if (!opts.toPng && opts.browserPath) {
+    console.error('Error: --browser requires --to-png');
+    process.exit(EXIT_FAILURE);
+  }
+  if (!opts.toPng && opts.pngScale !== 2) {
+    console.error('Error: --scale requires --to-png');
+    process.exit(EXIT_FAILURE);
+  }
+  if (!opts.toPng && opts.autoCrop) {
+    console.error('Error: --auto-crop requires --to-png');
+    process.exit(EXIT_FAILURE);
+  }
+  if (!opts.toPng && opts.fullPage) {
+    console.error('Error: --full-page requires --to-png');
+    process.exit(EXIT_FAILURE);
+  }
+  if (!opts.toPng && opts.forcePng) {
+    console.error('Error: --force-png requires --to-png');
     process.exit(EXIT_FAILURE);
   }
 
@@ -556,6 +674,56 @@ function main() {
   // Handle --watch
   if (opts.watch) {
     startWatch(opts.files, opts);
+    return;
+  }
+
+  // PNG mode: convert Pug/HTML → PNG (with SVG fallback)
+  if (opts.toPng) {
+    var pngOk = true;
+    var browserInfo = checkBrowserAvailable(opts.browserPath);
+    var useSvgFallback = false;
+
+    if (!browserInfo.available) {
+      if (opts.forcePng) {
+        console.error('Error: --force-png but no Chromium browser detected.');
+        console.error('  Install Chrome/Edge/Chromium, or use --browser <path>');
+        process.exit(EXIT_FAILURE);
+      }
+      console.warn('');
+      console.warn('⚠  No Chromium browser detected — falling back to SVG output.');
+      console.warn('   For PNG output, install Chrome/Edge/Chromium or specify:');
+      console.warn('     --browser <path>');
+      console.warn('     CHROME_PATH environment variable');
+      console.warn('');
+      useSvgFallback = true;
+    }
+
+    if (useSvgFallback) {
+      // Fallback to SVG
+      var svgPending = opts.files.map(function (f) {
+        return toSvgAndWrite(f, opts).then(function (r) {
+          if (!r) pngOk = false;
+        });
+      });
+      Promise.all(svgPending).then(function () {
+        if (!pngOk) process.exit(EXIT_FAILURE);
+      });
+    } else {
+      // Render PNG
+      var pngPending = opts.files.map(function (f) {
+        return toPngAndWrite(f, opts).catch(function (err) {
+          if (err instanceof NoBrowserFoundError) {
+            console.error('Error: browser not found during rendering: ' + err.message);
+          } else {
+            console.error('Error converting to PNG ' + f + ':', err.message || err);
+          }
+          pngOk = false;
+        });
+      });
+      Promise.all(pngPending).then(function () {
+        if (!pngOk) process.exit(EXIT_FAILURE);
+      });
+    }
     return;
   }
 
