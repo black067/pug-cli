@@ -111,6 +111,7 @@ pug-cli file.pug -o output/ --watch
 
 | 选项 | 对应 Pug 选项 | 说明 |
 |------|--------------|------|
+| `-b, --basedir <dir>` | `basedir` | 设置 `include`/`extends` 路径解析的根目录。默认：文件所在目录 |
 | `-p, --pretty` | `pretty: true` | 美化 HTML 输出（缩进和换行） |
 | `-D, --no-debug` | `compileDebug: false` | 禁用编译调试信息（默认开启） |
 | `-d, --doctype <str>` | `doctype` | 覆盖 doctype。可选值：`html`、`xml`、`transitional` 等 |

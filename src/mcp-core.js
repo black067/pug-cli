@@ -81,6 +81,68 @@ function expandInput(entry) {
 }
 
 // ============================================================
+// CSS resolution helper
+// ============================================================
+
+var LINK_CSS_RE = /<link\b[^>]*\brel\s*=\s*["']stylesheet["'][^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>/gi;
+
+/**
+ * Scan HTML for &lt;link rel="stylesheet" href="..."&gt; tags, resolve href relative
+ * to basedir (or cwd), read the file, and inline as &lt;style&gt; tags.
+ *
+ * - Found files: &lt;link&gt; is replaced with &lt;style&gt;...&lt;/style&gt;
+ * - Missing files: &lt;link&gt; is kept but marked with data-pug-cli-warn="not found"
+ * - extraCss (if provided) is appended as a &lt;style&gt; block before &lt;/head&gt; or &lt;body&gt;
+ *
+ * @param {string} htmlString - Raw HTML source
+ * @param {string} [basedir] - Base directory for resolving relative href paths
+ * @param {string} [extraCss] - Additional CSS string to inject as a style tag
+ * @returns {string} HTML with CSS inlined
+ */
+function resolveAndInlineCss(htmlString, basedir, extraCss) {
+  var base = basedir || process.cwd();
+  var result = htmlString;
+  var injected = {};  // href → true, to avoid duplicate injection
+
+  // Phase 1: resolve <link> tags
+  result = result.replace(LINK_CSS_RE, function (match, href) {
+    // Skip absolute URLs (http://, https://, //)
+    if (/^(https?:\/\/|\/\/)/i.test(href)) return match;
+
+    if (injected[href]) return '';  // already inlined, remove duplicate
+
+    var resolved = path.resolve(base, href);
+    try {
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+        injected[href] = true;
+        var cssContent = fs.readFileSync(resolved, 'utf8');
+        return '<style>\n' + cssContent + '\n</style>';
+      }
+    } catch (_) { /* ignore read errors */ }
+
+    // File not found — keep the link but add a warning attribute for diagnostics
+    return match.replace(/\/?>$/, ' data-pug-cli-warn="not found: ' + href + '"$&');
+  });
+
+  // Phase 2: inject extraCss if provided
+  if (extraCss) {
+    var styleTag = '<style>\n' + extraCss + '\n</style>';
+    // Try to insert before </head>
+    if (/<\/head>/i.test(result)) {
+      result = result.replace(/<\/head>/i, styleTag + '\n</head>');
+    } else if (/<body[>\s]/i.test(result)) {
+      // Insert before <body> if no </head>
+      result = result.replace(/(<body[>\s])/i, styleTag + '\n$1');
+    } else {
+      // Fragment without head/body — prepend
+      result = styleTag + '\n' + result;
+    }
+  }
+
+  return result;
+}
+
+// ============================================================
 // Tool handlers
 // ============================================================
 
@@ -119,7 +181,7 @@ function handlePugToHtml(args) {
         filename = args.filename;
       }
 
-      var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype });
+      var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype, basedir: args.basedir });
       var fn = pug.compile(source, opts);
       var html = fn(args.locals || {});
 
@@ -209,7 +271,7 @@ function handlePugToJs(args) {
     filename = filename || resolved;
   }
 
-  var opts = buildPugOptions({ filename: filename });
+  var opts = buildPugOptions({ filename: filename, basedir: args.basedir });
   opts.module = !!args.module;
   if (args.name) opts.name = args.name;
   var js = pug.compileClient(source, opts);
@@ -237,6 +299,9 @@ async function handleHtmlToSvg(args) {
   if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
     htmlSource = fs.readFileSync(resolved, 'utf8');
   }
+
+  // Resolve CSS: inline <link> tags + inject extra css string
+  htmlSource = resolveAndInlineCss(htmlSource, args.basedir, args.css);
 
   var svg = await htmlToSvg(htmlSource, {
     width: args.width,
@@ -323,6 +388,9 @@ async function handleHtmlToPng(args) {
     htmlSource = fs.readFileSync(resolved, 'utf8');
   }
 
+  // Resolve CSS: inline <link> tags + inject extra css string
+  htmlSource = resolveAndInlineCss(htmlSource, args.basedir, args.css);
+
   return await renderHtmlToImageResponse(htmlSource, args);
 }
 
@@ -338,9 +406,12 @@ async function handlePugToPng(args) {
   }
 
   // Compile Pug → HTML
-  var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype });
+  var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype, basedir: args.basedir });
   var fn = pug.compile(source, opts);
   var html = fn(args.locals || {});
+
+  // Resolve CSS: inline <link> tags + inject extra css string
+  html = resolveAndInlineCss(html, args.basedir, args.css);
 
   // Check browser availability — save intermediate HTML for inspection if unavailable
   var browserInfo = checkBrowserAvailable();
@@ -377,11 +448,23 @@ function startMcpServer() {
         '- **html_to_png**: Render HTML → PNG (Playwright headless Chromium). Set `output` to a file path to write to disk. Fails if no browser detected.',
         '- **pug_to_png**: Compile Pug → PNG in one step (Pug → HTML → PNG). Set `output` to a file path to write to disk. Fails if no browser detected, but saves intermediate HTML for inspection.',
         '',
+        '### Path resolution',
+        '- All tools accept a `basedir` parameter — the base directory for resolving `include`/`extends` and `<link>` paths.',
+        '- `basedir` defaults to the directory of the input file, or the current working directory for inline source.',
+        '- **Convention**: Write all paths relative to `basedir`. Avoid absolute paths — they will fail on the target machine.',
+        '',
+        '### CSS handling',
+        '- `<link rel="stylesheet" href="...">` tags are auto-resolved relative to `basedir` and inlined as `<style>` before rendering.',
+        '- Missing stylesheets are kept as `<link>` with a `data-pug-cli-warn` attribute for diagnostics.',
+        '- **Recommended for agents**: Use the `css` parameter to pass CSS strings directly — no file path needed.',
+        '',
         '### Tips',
         '- Pug → SVG: compile with pug_to_html first, then pass the HTML to html_to_svg.',
         '- Use `pretty: true` for readable HTML output.',
         '- Pass template variables via `locals`: {"title": "Hello"}.',
         '- For Pug extends/include, set `filename` to the template file path.',
+        '- Set `basedir` to define the root for all path resolution (include/extends + CSS links).',
+        '- **For CSS**: Prefer the `css` parameter (inline string) over `<link>` tags — no path resolution needed.',
         '- Extra fonts for SVG: `fonts`: ["path/to/font.ttf"].',
         '- PNG defaults (width, height, scale, fullPage, wrapperCss) follow convention over configuration. Create `pug-cli.config.json` to customize — run `pug-cli --config-gen` to generate a template.',
         '- By convention, `fullPage` defaults to `true` (capture natural content height). Set `fullPage: false` explicitly to restrict to viewport.',
@@ -409,6 +492,7 @@ function startMcpServer() {
               pretty: { type: 'boolean', description: 'Pretty-print HTML output with indentation and line breaks.' },
               locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },
               filename: { type: 'string', description: 'Virtual filename for error traces and basedir. Required for extends/include resolution with inline source.' },
+              basedir: { type: 'string', description: 'Base directory for resolving include/extends paths. Defaults to dir of filename, or cwd for inline source.' },
             },
             required: ['source'],
           },
@@ -423,6 +507,7 @@ function startMcpServer() {
               name: { type: 'string', description: 'JavaScript function name. Defaults to "template".' },
               module: { type: 'boolean', description: 'Wrap output in CommonJS module.exports for Node.js use.' },
               filename: { type: 'string', description: 'Virtual filename for error traces and basedir.' },
+              basedir: { type: 'string', description: 'Base directory for resolving include/extends paths. Defaults to dir of filename, or cwd.' },
             },
             required: ['source'],
           },
@@ -440,7 +525,7 @@ function startMcpServer() {
         },
         {
           name: 'html_to_svg',
-          description: 'Render HTML to SVG via Satori (supports Flexbox CSS). Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Width/height auto-detected from inline CSS if omitted. For Pug input, compile with pug_to_html first.',
+          description: 'Render HTML to SVG via Satori (supports Flexbox CSS). Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Width/height auto-detected from inline CSS if omitted. For Pug input, compile with pug_to_html first. <link> stylesheets are auto-resolved relative to basedir and inlined. Use `css` to pass CSS directly.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -449,13 +534,15 @@ function startMcpServer() {
               height: { type: 'number', description: 'SVG canvas height in pixels. Auto-detected from content if omitted.' },
               fonts: { type: 'array', items: { type: 'string' }, description: 'Extra font file paths (TTF/OTF/WOFF). Built-in: Inter + Noto Sans SC.' },
               debug: { type: 'boolean', description: 'Draw bounding boxes for layout debugging.' },
+              basedir: { type: 'string', description: 'Base directory for resolving <link> href paths. Defaults to cwd.' },
+              css: { type: 'string', description: 'CSS string to inject as an inline <style> tag. Recommended over external <link> for agent-generated templates.' },
             },
             required: ['source'],
           },
         },
         {
           name: 'html_to_png',
-          description: 'Render HTML to PNG via Playwright (headless Chromium). Fails if no browser is detected. Uses system-installed Chrome/Edge/Chromium. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json. Set `output` to write the PNG to a user-specified file path; otherwise the image is returned as a base64 data URI.',
+          description: 'Render HTML to PNG via Playwright (headless Chromium). Fails if no browser is detected. Uses system-installed Chrome/Edge/Chromium. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json. Set `output` to write the PNG to a user-specified file path; otherwise the image is returned as a base64 data URI. <link> stylesheets are auto-resolved relative to basedir and inlined. Use `css` to pass CSS directly.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -467,6 +554,8 @@ function startMcpServer() {
               fullPage: { type: 'boolean', description: 'Capture full scrollable page. Config default: true. Set to false to restrict to viewport.' },
               browserPath: { type: 'string', description: 'Explicit browser executable path.' },
               output: { type: 'string', description: 'File path to write the PNG to disk. When provided, the file is persisted; otherwise only a base64 data URI is returned.' },
+              basedir: { type: 'string', description: 'Base directory for resolving <link> href paths. Defaults to cwd.' },
+              css: { type: 'string', description: 'CSS string to inject as an inline <style> tag. Recommended over external <link> for agent-generated templates.' },
             },
             required: ['source'],
           },
@@ -482,6 +571,8 @@ function startMcpServer() {
               pretty: { type: 'boolean', description: 'Pretty-print intermediate HTML output (only affects Pug compilation).' },
               doctype: { type: 'string', description: 'Override doctype (html, xml, transitional, etc.).' },
               locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },
+              basedir: { type: 'string', description: 'Base directory for resolving include/extends and <link> href paths. Defaults to dir of filename, or cwd for inline source.' },
+              css: { type: 'string', description: 'CSS string to inject as an inline <style> tag. Recommended over external <link> for agent-generated templates.' },
               width: { type: 'number', description: 'Viewport width in pixels. Auto-detected from content, then config default (800).' },
               height: { type: 'number', description: 'Viewport height in pixels. Auto-detected from content, then config default (600).' },
               scale: { type: 'number', description: 'Device scale factor / Retina. Config default: 2.' },

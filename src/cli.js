@@ -283,55 +283,59 @@ function startWatch(files, opts) {
 // Usage & Info
 // ============================================================
 
-function printUsage() {
-  console.error('');
-  console.error('Usage: pug-cli [options] <file.pug ...>');
-  console.error('');
-  console.error('Compilation options (all map to native pug APIs):');
-  console.error('  -o, --out <dir>           Output directory (default: current dir)');
-  console.error('  -p, --pretty              Pretty-print HTML output');
-  console.error('  -O, --obj <str>           JSON string or JSON file with locals');
-  console.error('  -D, --no-debug            Disable compile debug info (default: on)');
-  console.error('  -d, --doctype <str>       Override doctype (html, xml, transitional, etc.)');
-  console.error('  -g, --global <name>       Declare a global variable (repeatable)');
-  console.error('  -s, --self                Use self namespace for locals');
-  console.error('  -C, --cache               Enable template caching');
-  console.error('');
-  console.error('Client-side JS compilation:');
-  console.error('  -c, --client              Compile to client-side JS function');
-  console.error('  -M, --module              Wrap output in module.exports (with --client)');
-  console.error('  -n, --name <str>          Template function name (default: "template")');
-  console.error('');
-  console.error('Extensibility:');
-  console.error('  -f, --filter <name=mod>   Register a filter (e.g. md=jstransformer-markdown-it)');
-  console.error('      --plugin <module>     Load a pug plugin module (repeatable)');
-  console.error('');
-  console.error('I/O modes:');
-  console.error('  -w, --watch               Watch files for changes');
-  console.error('      --stdin               Read template from stdin');
-  console.error('  -R, --reverse             Convert HTML/XML file to Pug (auto-detect mode)');
-  console.error('  -S, --to-svg              Convert .pug or .html to SVG (via Satori)');
-  console.error('  -P, --to-png              Convert .pug or .html to PNG (via Playwright)');
-  console.error('');
-  console.error('Image output options (with --to-svg or --to-png):');
-  console.error('      --width <n>           Canvas width in px (default: 800)');
-  console.error('      --height <n>          Canvas height in px (default: 600)');
-  console.error('      --font <path>         Load additional TTF/OTF/WOFF font (repeatable, SVG only)');
-  console.error('');
-  console.error('PNG options (with --to-png):');
-  console.error('  -B, --browser <path>     Specify browser executable path');
-  console.error('      --scale <n>           Device scale factor / Retina (default: 2)');
-  console.error('      --auto-crop           Auto-crop PNG to content bounding box');
-  console.error('      --full-page           Capture full scrollable page as one PNG');
-  console.error('');
-  console.error('Info:');
-  console.error('  -h, --help                Display this help message');
-  console.error('  -V, --version             Display version information');
-  console.error('      --licence             Display license information');
-  console.error('      --config-gen          Generate pug-cli.config.json template in current directory');
-  console.error('      --browser-detect      Show browser detection diagnostics (all levels)');
-  console.error('      --mcp-server           Start MCP (Model Context Protocol) server');
-  console.error('');
+function printUsage(toStderr) {
+  var out = toStderr ? console.error.bind(console) : console.log.bind(console);
+  out([
+    '',
+    'Usage: pug-cli [options] <file.pug ...>',
+    '',
+    'Compilation options (all map to native pug APIs):',
+    '  -o, --out <dir>           Output directory (default: current dir)',
+    '  -b, --basedir <dir>       Base directory for resolving include/extends paths (default: dir of input file)',
+    '  -p, --pretty              Pretty-print HTML output',
+    '  -O, --obj <str>           JSON string or JSON file with locals',
+    '  -D, --no-debug            Disable compile debug info (default: on)',
+    '  -d, --doctype <str>       Override doctype (html, xml, transitional, etc.)',
+    '  -g, --global <name>       Declare a global variable (repeatable)',
+    '  -s, --self                Use self namespace for locals',
+    '  -C, --cache               Enable template caching',
+    '',
+    'Client-side JS compilation:',
+    '  -c, --client              Compile to client-side JS function',
+    '  -M, --module              Wrap output in module.exports (with --client)',
+    '  -n, --name <str>          Template function name (default: "template")',
+    '',
+    'Extensibility:',
+    '  -f, --filter <name=mod>   Register a filter (e.g. md=jstransformer-markdown-it)',
+    '      --plugin <module>     Load a pug plugin module (repeatable)',
+    '',
+    'I/O modes:',
+    '  -w, --watch               Watch files for changes',
+    '      --stdin               Read template from stdin',
+    '  -R, --reverse             Convert HTML/XML file to Pug (auto-detect mode)',
+    '  -S, --to-svg              Convert .pug or .html to SVG (via Satori)',
+    '  -P, --to-png              Convert .pug or .html to PNG (via Playwright)',
+    '',
+    'Image output options (with --to-svg or --to-png):',
+    '      --width <n>           Canvas width in px (default: 800)',
+    '      --height <n>          Canvas height in px (default: 600)',
+    '      --font <path>         Load additional TTF/OTF/WOFF font (repeatable, SVG only)',
+    '',
+    'PNG options (with --to-png):',
+    '  -B, --browser <path>     Specify browser executable path',
+    '      --scale <n>           Device scale factor / Retina (default: 2)',
+    '      --auto-crop           Auto-crop PNG to content bounding box',
+    '      --full-page           Capture full scrollable page as one PNG',
+    '',
+    'Info:',
+    '  -h, --help                Display this help message',
+    '  -V, --version             Display version information',
+    '      --licence             Display license information',
+    '      --config-gen          Generate pug-cli.config.json template in current directory',
+    '      --browser-detect      Show browser detection diagnostics (all levels)',
+    '      --mcp-server           Start MCP (Model Context Protocol) server',
+    '',
+  ].join('\n'));
 }
 
 function printVersion() {
@@ -412,7 +416,7 @@ function main() {
   var args = process.argv.slice(2);
 
   if (args.length === 0) {
-    printUsage();
+    printUsage(true);
     process.exit(EXIT_FAILURE);
   }
 
@@ -439,6 +443,7 @@ function main() {
     fullPage: undefined,
     browserPath: undefined,
     // Compilation (native pug options)
+    basedir: undefined,
     pretty: false,
     compileDebug: true,
     doctype: undefined,
@@ -462,7 +467,7 @@ function main() {
       // --- Info ---
       case '-h':
       case '--help':
-        printUsage();
+        printUsage(false);
         return;
       case '-V':
       case '--version':
@@ -488,6 +493,11 @@ function main() {
       case '--out':
         i++; if (i >= args.length) { console.error('Error: --out requires a directory argument'); process.exit(EXIT_FAILURE); }
         opts.outDir = path.resolve(args[i]);
+        break;
+      case '-b':
+      case '--basedir':
+        i++; if (i >= args.length) { console.error('Error: --basedir requires a directory argument'); process.exit(EXIT_FAILURE); }
+        opts.basedir = path.resolve(args[i]);
         break;
       case '-w':
       case '--watch':
@@ -639,7 +649,7 @@ function main() {
           opts.files.push(arg);
         } else {
           console.error('Error: unknown option ' + arg);
-          printUsage();
+          printUsage(true);
           process.exit(EXIT_FAILURE);
         }
     }
@@ -698,7 +708,7 @@ function main() {
   // Need files
   if (opts.files.length === 0) {
     console.error('Error: no input files (use --stdin to read from stdin)');
-    printUsage();
+    printUsage(true);
     process.exit(EXIT_FAILURE);
   }
 

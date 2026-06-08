@@ -69,7 +69,8 @@ node dist/pug-cli-bundled.js --mcp-server
 | `output` | `string` | — | 输出目录。提供时将编译结果写入磁盘文件，不提供时返回内联 HTML |
 | `pretty` | `boolean` | — | 美化 HTML 输出（缩进和换行） |
 | `locals` | `object` | — | 模板变量，如 `{"title": "Hello"}` |
-| `filename` | `string` | — | 虚拟文件名（用于错误栈追踪和 basedir）。内联源码使用 `extends`/`include` 时必填 |
+| `filename` | `string` | — | 虚拟文件名（用于错误栈追踪）。内联源码使用 `extends`/`include` 时必填 |
+| `basedir` | `string` | — | 路径解析根目录。`include`/`extends` 的相对路径以此为基础解析。默认：文件模式 = 文件所在目录，内联模式 = 当前工作目录 |
 
 **返回格式：**
 
@@ -90,7 +91,8 @@ node dist/pug-cli-bundled.js --mcp-server
 | `source` | `string` | ✅ | Pug 源码或 `.pug` 文件路径（自动检测：文件存在 → 读取，否则 → 视为内联源码） |
 | `name` | `string` | — | JavaScript 函数名，默认 `"template"` |
 | `module` | `boolean` | — | 包装为 CommonJS `module.exports`（用于 Node.js） |
-| `filename` | `string` | — | 虚拟文件名（用于错误栈追踪和 basedir） |
+| `filename` | `string` | — | 虚拟文件名（用于错误栈追踪） |
+| `basedir` | `string` | — | 路径解析根目录。默认：文件所在目录，或当前工作目录 |
 
 **返回：** JavaScript 源码字符串。
 
@@ -134,8 +136,15 @@ node dist/pug-cli-bundled.js --mcp-server
 | `height` | `number` | — | SVG 画布高度（像素）。省略时自动从 HTML `style="height:..."` 检测 → 默认 600 |
 | `fonts` | `string[]` | — | 额外字体文件路径（TTF/OTF/WOFF）。内置 Inter（拉丁）+ Noto Sans SC（中日韩） |
 | `debug` | `boolean` | — | 绘制布局边界框，用于调试 |
+| `basedir` | `string` | — | CSS 路径解析根目录。`<link href="...">` 的相对路径以此为基础解析并自动内联 |
+| `css` | `string` | — | **推荐方式**：直接传入 CSS 字符串，自动注入为内联 `<style>` 标签。无需文件路径 |
 
 **返回：** SVG 字符串。
+
+**CSS 处理：**
+- `<link rel="stylesheet" href="...">` 标签会自动相对于 `basedir`（或 CWD）解析，找到文件后内联为 `<style>`
+- 未找到的文件保留原 `<link>` 标签并标记 `data-pug-cli-warn` 属性
+- 使用 `css` 参数可直接传入 CSS 字符串，完全避开路径问题（**推荐 Agent 使用**）
 
 **内置功能：**
 - Emoji 自动转换为彩色图片（从 Twemoji CDN 获取）
@@ -164,6 +173,8 @@ node dist/pug-cli-bundled.js --mcp-server
 | `autoCrop` | `boolean` | — | false | 自动裁剪到 `<body>` 内容边界框 |
 | `fullPage` | `boolean` | — | true（配置） | 截取完整可滚动页面，设为 false 则限制为视口 |
 | `browserPath` | `string` | — | 自动检测 | 指定浏览器可执行文件路径 |
+| `basedir` | `string` | — | CWD | CSS 路径解析根目录。`<link href="...">` 的相对路径以此为基础解析并自动内联 |
+| `css` | `string` | — | — | **推荐方式**：直接传入 CSS 字符串，自动注入为内联 `<style>` 标签 |
 
 **返回：** MCP `resource` 类型内容，含 `data:image/png;base64,...` 格式的图片。若指定了 `output`，额外附带 `{"written": "<output路径>"}` 文本确认。
 
@@ -195,6 +206,8 @@ node dist/pug-cli-bundled.js --mcp-server
 | `pretty` | `boolean` | — | false | 美化中间 HTML 输出 |
 | `doctype` | `string` | — | — | 覆盖 doctype |
 | `locals` | `object` | — | — | 模板变量 |
+| `basedir` | `string` | — | — | 路径解析根目录。同时影响 Pug `include`/`extends` 和 CSS `<link>` 解析 |
+| `css` | `string` | — | — | **推荐方式**：直接传入 CSS 字符串，自动注入为内联 `<style>` 标签 |
 | `width` | `number` | — | 自动检测 → 800 | 视口宽度 |
 | `height` | `number` | — | 自动检测 → 600 | 视口高度 |
 | `scale` | `number` | — | 2 | 设备缩放因子 |
@@ -222,6 +235,66 @@ MCP 模式同样读取 `pug-cli.config.json`（查找顺序：`./pug-cli.config.
 
 ---
 
+## 路径解析约定
+
+### 核心原则
+
+**所有路径都相对于 `basedir` 书写，不使用绝对路径。** 绝对路径在目标机器上通常不存在，会导致解析失败。
+
+### `basedir` 的默认值
+
+| 场景 | 默认 `basedir` |
+|------|---------------|
+| 编译 `.pug` 文件 | 文件所在目录 |
+| 内联 Pug 源码（未指定 `filename`） | 当前工作目录（CWD） |
+| 内联 Pug 源码（指定了 `filename`） | `filename` 所在目录 |
+| 显式传入 `basedir` 参数 | 使用传入值（覆盖默认） |
+
+### CSS 路径解析
+
+对于 `html_to_svg`、`html_to_png`、`pug_to_png`，HTML 中的 `<link rel="stylesheet" href="...">` 标签会：
+
+1. 跳过 `http://` / `https://` 开头的绝对 URL
+2. 将 `href` 相对于 `basedir`（或 CWD）解析为绝对路径
+3. 如果文件存在 → 读取内容，将 `<link>` 替换为 `<style>/* 内容 */</style>`
+4. 如果文件不存在 → 保留原 `<link>` 并添加 `data-pug-cli-warn="not found: ..."` 属性
+
+### Agent 最佳实践
+
+**🎯 首选：使用 `css` 参数**
+
+```json
+{
+  "source": "<div style=\"display:flex\">Hello</div>",
+  "css": "body { background: #f0f0f0; } div { color: red; }"
+}
+```
+
+直接传 CSS 字符串，零路径依赖，最高效。
+
+**📁 备选：相对 `basedir` 引用文件**
+
+```json
+{
+  "source": "doctype html\nhtml\n  head\n    link(rel='stylesheet', href='styles/main.css')\n  body\n    h1 Hello",
+  "basedir": "/path/to/project"
+}
+```
+
+工具会自动将 `styles/main.css` 解析为 `/path/to/project/styles/main.css` 并内联。
+
+**✅ Pug `include` / `extends` 的正确方式：**
+
+```json
+{
+  "source": "extends layout.pug\nblock content\n  h1 hello",
+  "filename": "templates/index.pug",
+  "basedir": "/path/to/project"
+}
+```
+
+---
+
 ## 使用建议
 
 ### Pug → SVG 的正确方式
@@ -230,17 +303,6 @@ MCP 模式同样读取 `pug-cli.config.json`（查找顺序：`./pug-cli.config.
 
 1. 用 `pug_to_html` 将 Pug 编译为 HTML
 2. 将返回的 HTML 传给 `html_to_svg`
-
-### 内联源码使用 `extends` / `include`
-
-必须通过 `filename` 参数告知 basedir，否则无法解析相对路径：
-
-```json
-{
-  "source": "extends layout.pug\nblock content\n  h1 hello",
-  "filename": "/path/to/templates/index.pug"
-}
-```
 
 ### 批量文件编译
 
