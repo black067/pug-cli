@@ -88,6 +88,7 @@ pug-cli --mcp-server
 |------|------|
 | `pug_to_html` | Pug → HTML 编译 |
 | `pug_to_js` | Pug → 客户端 JS 函数 |
+| `pug_to_png` | Pug → PNG 渲染 |
 | `html_to_pug` | HTML/XML → Pug 语法转换 |
 | `html_to_svg` | HTML → SVG 渲染（Satori） |
 | `html_to_png` | HTML → PNG 渲染（Playwright） |

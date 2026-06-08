@@ -247,20 +247,18 @@ async function handleHtmlToSvg(args) {
   return { content: [{ type: 'text', text: svg }] };
 }
 
-async function handleHtmlToPng(args) {
-  var htmlSource = args.source;
-
-  // Auto-detect: if source is an existing file path, read it
-  var resolved = path.resolve(htmlSource);
-  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
-    htmlSource = fs.readFileSync(resolved, 'utf8');
-  }
-
+/**
+ * Shared helper: render HTML to an image response (PNG or SVG fallback).
+ * @param {string} html - The HTML source to render
+ * @param {object} args - Image rendering args (width, height, scale, autoCrop, fullPage, browserPath, fonts, debug)
+ * @returns {object} MCP response content
+ */
+async function renderHtmlToImageResponse(html, args) {
   // Check browser availability
   var browserInfo = checkBrowserAvailable();
   if (!browserInfo.available) {
     // Fallback to SVG with a note
-    var svg = await htmlToSvg(htmlSource, {
+    var svg = await htmlToSvg(html, {
       width: args.width,
       height: args.height,
       extraFonts: args.fonts || [],
@@ -283,7 +281,7 @@ async function handleHtmlToPng(args) {
   var tempFile = path.join(tempDir, 'pug-cli-temp-' + Date.now() + '.png');
 
   try {
-    await htmlToPng(htmlSource, tempFile, {
+    await htmlToPng(html, tempFile, {
       width: args.width,
       height: args.height,
       scale: args.scale || 2,
@@ -313,6 +311,37 @@ async function handleHtmlToPng(args) {
   }
 }
 
+async function handleHtmlToPng(args) {
+  var htmlSource = args.source;
+
+  // Auto-detect: if source is an existing file path, read it
+  var resolved = path.resolve(htmlSource);
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+    htmlSource = fs.readFileSync(resolved, 'utf8');
+  }
+
+  return await renderHtmlToImageResponse(htmlSource, args);
+}
+
+async function handlePugToPng(args) {
+  var source = args.source;
+  var filename = args.filename;
+
+  // Auto-detect: if source is an existing file path, read it
+  var resolved = path.resolve(source);
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+    source = fs.readFileSync(resolved, 'utf8');
+    filename = filename || resolved;
+  }
+
+  // Compile Pug → HTML
+  var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype });
+  var fn = pug.compile(source, opts);
+  var html = fn(args.locals || {});
+
+  return await renderHtmlToImageResponse(html, args);
+}
+
 // ============================================================
 // Server startup
 // ============================================================
@@ -330,9 +359,10 @@ function startMcpServer() {
         '- **html_to_pug**: Convert HTML/XML → Pug syntax.',
         '- **html_to_svg**: Render HTML → SVG (Satori engine, Flexbox CSS).',
         '- **html_to_png**: Render HTML → PNG (Playwright headless Chromium). Falls back to SVG if no browser detected.',
+        '- **pug_to_png**: Compile Pug → PNG in one step (Pug → HTML → PNG). Falls back to SVG if no browser detected.',
         '',
         '### Tips',
-        '- Pug → SVG: compile with pug_to_html first, then pass the HTML to html_to_svg.',
+        '- Pug → SVG: compile with pug_to_html first, then pass the HTML to html_to_svg, or use pug_to_png which will fallback to SVG.',
         '- Use `pretty: true` for readable HTML output.',
         '- Pass template variables via `locals`: {"title": "Hello"}.',
         '- For Pug extends/include, set `filename` to the template file path.',
@@ -422,6 +452,29 @@ function startMcpServer() {
             required: ['source'],
           },
         },
+        {
+          name: 'pug_to_png',
+          description: 'Compile Pug to PNG in one step. Accepts inline Pug source or .pug file path. Internally compiles to HTML, then renders to PNG via Playwright. Falls back to SVG if no browser is detected.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              source: { type: 'string', description: 'Pug template source code or a .pug file path to read.' },
+              filename: { type: 'string', description: 'Virtual filename for Pug error traces and basedir. Required for extends/include resolution.' },
+              pretty: { type: 'boolean', description: 'Pretty-print intermediate HTML output (only affects Pug compilation).' },
+              doctype: { type: 'string', description: 'Override doctype (html, xml, transitional, etc.).' },
+              locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },
+              width: { type: 'number', description: 'Viewport width in pixels (default: 800).' },
+              height: { type: 'number', description: 'Viewport height in pixels (default: 600).' },
+              scale: { type: 'number', description: 'Device scale factor / Retina (default: 2).' },
+              autoCrop: { type: 'boolean', description: 'Auto-crop to content bounding box.' },
+              fullPage: { type: 'boolean', description: 'Capture full scrollable page.' },
+              browserPath: { type: 'string', description: 'Explicit browser executable path.' },
+              fonts: { type: 'array', items: { type: 'string' }, description: 'Extra font file paths for SVG fallback (TTF/OTF/WOFF).' },
+              debug: { type: 'boolean', description: 'Enable debug layout (SVG fallback only).' },
+            },
+            required: ['source'],
+          },
+        },
       ],
     };
   });
@@ -441,6 +494,8 @@ function startMcpServer() {
           return await handleHtmlToSvg(args);
         case 'html_to_png':
           return await handleHtmlToPng(args);
+        case 'pug_to_png':
+          return await handlePugToPng(args);
         default:
           throw new Error('Unknown tool: ' + name);
       }
