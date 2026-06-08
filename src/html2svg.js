@@ -21,8 +21,9 @@ const { collectFonts } = require('./fonts');
 /**
  * Auto-detect SVG canvas dimensions from the HTML content.
  *
- * Strategy: look for inline style on the first element (usually <body> or <html>)
- * that contains explicit `width: <N>px` and `height: <N>px`.
+ * Strategy: detect width and height independently from inline style attributes
+ * (e.g. style="width:390px; height:844px"). Either dimension alone is valid —
+ * the caller decides how to fill the missing one.
  *
  * @param {string} htmlString - Compiled HTML source
  * @returns {{ width: number|null, height: number|null }}
@@ -31,34 +32,29 @@ function autoDetectDimensions(htmlString) {
   var width = null;
   var height = null;
 
-  // Match style="...width: <N>px..." or style='...width:<N>px...'
-  // Look for width/height in inline style attributes
-  var styleRegex = /style\s*=\s*["'][^"']*?(?:width\s*:\s*(\d+)\s*px)[^"']*?(?:height\s*:\s*(\d+)\s*px)[^"']*?["']/i;
-  var match = styleRegex.exec(htmlString);
-  if (match) {
-    width = parseInt(match[1], 10);
-    height = parseInt(match[2], 10);
-    if (width > 0 && height > 0) {
-      return { width: width, height: height };
-    }
+  // Detect width and height independently from inline style attributes.
+  // e.g. style="width:390px" or style="height:844px" — either alone is enough.
+  var styleWidth = /style\s*=\s*["'][^"']*?width\s*:\s*(\d+)\s*px/i.exec(htmlString);
+  if (styleWidth) {
+    var w = parseInt(styleWidth[1], 10);
+    if (w > 0) width = w;
   }
 
-  // Try reverse order: height before width
-  var styleRegexRev = /style\s*=\s*["'][^"']*?(?:height\s*:\s*(\d+)\s*px)[^"']*?(?:width\s*:\s*(\d+)\s*px)[^"']*?["']/i;
-  var matchRev = styleRegexRev.exec(htmlString);
-  if (matchRev) {
-    width = parseInt(matchRev[2], 10);
-    height = parseInt(matchRev[1], 10);
-    if (width > 0 && height > 0) {
-      return { width: width, height: height };
-    }
+  var styleHeight = /style\s*=\s*["'][^"']*?height\s*:\s*(\d+)\s*px/i.exec(htmlString);
+  if (styleHeight) {
+    var h = parseInt(styleHeight[1], 10);
+    if (h > 0) height = h;
   }
 
-  // Fallback: look for width="<N>" or height="<N>" attributes on <svg> or <img>
-  var attrWidth = /width\s*=\s*["'](\d+)["']/i.exec(htmlString);
-  var attrHeight = /height\s*=\s*["'](\d+)["']/i.exec(htmlString);
-  if (attrWidth) width = parseInt(attrWidth[1], 10);
-  if (attrHeight) height = parseInt(attrHeight[1], 10);
+  // Fallback: look for width="<N>" or height="<N>" HTML attributes (svg, img, etc.)
+  if (width === null) {
+    var attrWidth = /width\s*=\s*["'](\d+)["']/i.exec(htmlString);
+    if (attrWidth) width = parseInt(attrWidth[1], 10);
+  }
+  if (height === null) {
+    var attrHeight = /height\s*=\s*["'](\d+)["']/i.exec(htmlString);
+    if (attrHeight) height = parseInt(attrHeight[1], 10);
+  }
 
   return { width: width, height: height };
 }

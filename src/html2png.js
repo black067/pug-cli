@@ -41,10 +41,13 @@ const { autoDetectDimensions } = require('./html2svg');
  *   }
  */
 var CONFIG = {
-  defaults: { width: 800, height: 600, scale: 2 },
+  defaults: { width: 800, height: 600, scale: 2, fullPage: true },
   browser: {
     searchPaths: [],
     launchArgs: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+  },
+  png: {
+    wrapperCss: '*{margin:0;padding:0;box-sizing:border-box}body{margin:0;padding:0}svg{display:block}',
   },
 };
 
@@ -66,6 +69,10 @@ function loadConfig() {
           if (user.defaults.width != null) CONFIG.defaults.width = user.defaults.width;
           if (user.defaults.height != null) CONFIG.defaults.height = user.defaults.height;
           if (user.defaults.scale != null) CONFIG.defaults.scale = user.defaults.scale;
+          if (user.defaults.fullPage != null) CONFIG.defaults.fullPage = user.defaults.fullPage;
+        }
+        if (user.png) {
+          if (user.png.wrapperCss != null) CONFIG.png.wrapperCss = user.png.wrapperCss;
         }
         return;
       } catch (_) { /* invalid config — ignore, use convention */ }
@@ -254,12 +261,11 @@ function normalizeHtmlContent(htmlString) {
   // Already a full document — leave as-is
   if (/<html[>\s]/i.test(htmlString)) return htmlString;
 
-  // Wrap fragment in a document with reset styles
+  // Wrap fragment in a document. CSS is configurable via pug-cli.config.json
+  // (png.wrapperCss) so users can set custom defaults (font, background, etc.).
   return (
     '<!DOCTYPE html>\n<html><head><style>\n' +
-    '* { margin: 0; padding: 0; box-sizing: border-box; }\n' +
-    'body { margin: 0; padding: 0; }\n' +
-    'svg { display: block; }\n' +
+    CONFIG.png.wrapperCss + '\n' +
     '</style></head><body>' +
     htmlString +
     '</body></html>'
@@ -324,11 +330,15 @@ async function htmlToPng(htmlString, outputPath, opts) {
       }
     }
 
+    // fullPage default comes from config (convention: true — capture natural content height).
+    // Explicit opts.fullPage (CLI --full-page) overrides the config default.
+    var fullPage = opts.fullPage != null ? opts.fullPage : CONFIG.defaults.fullPage;
+
     await page.screenshot({
       path: resolvedPath,
       clip: clip,
       type: 'png',
-      fullPage: !!opts.fullPage,
+      fullPage: fullPage,
     });
 
     await context.close();

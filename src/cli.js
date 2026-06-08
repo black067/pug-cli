@@ -391,10 +391,15 @@ function generateConfigFile() {
       launchArgs: CONFIG.browser.launchArgs,
     },
     defaults: {
-      _comment: 'Default dimensions and scale for image output (--to-svg / --to-png).',
+      _comment: 'Default dimensions, scale, and fullPage for image output (--to-svg / --to-png).',
       width: CONFIG.defaults.width,
       height: CONFIG.defaults.height,
       scale: CONFIG.defaults.scale,
+      fullPage: CONFIG.defaults.fullPage,
+    },
+    png: {
+      _comment: 'CSS injected into the wrapper when rendering HTML fragments to PNG.',
+      wrapperCss: CONFIG.png.wrapperCss,
     },
   };
 
@@ -434,7 +439,7 @@ function main() {
     pngHeight: undefined,
     pngScale: 2,
     autoCrop: false,
-    fullPage: false,
+    fullPage: undefined,
     browserPath: undefined,
     // Compilation (native pug options)
     pretty: false,
