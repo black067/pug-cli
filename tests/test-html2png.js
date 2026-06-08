@@ -158,6 +158,16 @@ async function run() {
 
     var tmpDir = path.join(__dirname, '..', 'temp');
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    // Clean up stale test artifacts from previous runs
+    try {
+      var staleFiles = fs.readdirSync(tmpDir);
+      for (var si = 0; si < staleFiles.length; si++) {
+        var sf = path.join(tmpDir, staleFiles[si]);
+        if (fs.statSync(sf).isFile() && /\.(png|svg)$/i.test(staleFiles[si])) {
+          try { fs.unlinkSync(sf); } catch (_) {}
+        }
+      }
+    } catch (_) {}
 
     await testAsync('htmlToPng produces valid PNG file', async function () {
       var outPath = path.join(tmpDir, 'test-basic.png');

@@ -277,9 +277,9 @@ async function renderHtmlToImageResponse(html, args) {
     };
   }
 
-  // Render to PNG and return as base64 data URI
-  var tempDir = os.tmpdir();
-  var tempFile = path.join(tempDir, 'pug-cli-temp-' + Date.now() + '.png');
+  // Render to PNG and return as base64 data URI.
+  // Write to OS temp dir — the file is deleted in finally below.
+  var tempFile = path.join(os.tmpdir(), 'pug-cli-temp-' + Date.now() + '.png');
 
   try {
     await htmlToPng(html, tempFile, {
