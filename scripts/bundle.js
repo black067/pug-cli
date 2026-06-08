@@ -77,22 +77,54 @@ async function main() {
           });
         },
       },
-      // playwright-core internally computes packageRoot = path.join(__dirname, "..")
-      // to find its own package.json. In the bundled context __dirname is the bundle
-      // directory, not playwright-core's. Patch the computation to use the real path.
+      // playwright-core's package.ts computes packageRoot to locate its own
+      // package.json and internal modules. In the bundled context:
+      //   - __dirname is the bundle directory (dev: dist/, SEA: temp dir)
+      //   - path.join(__dirname, "..") gives parent dir (always exists)
+      //
+      // We keep packageRoot = __dirname (a valid, existing directory).
+      // playwright-core only needs a valid packageRoot because:
+      //   - packageJSON is inlined below (no require() on missing file)
+      //   - libPath() is never called (all modules inlined by esbuild)
+      //   - binPath is never accessed (CLI tools not used)
       {
         name: 'patch-pw-package-root',
         setup(build) {
           build.onLoad({ filter: /coreBundle\.js$/ }, async (args) => {
-            const pwCoreDir = path.resolve(__dirname, '..', 'node_modules', 'playwright-core');
             let contents = await fs.promises.readFile(args.path, 'utf8');
-            // Replace the dynamic __dirname-based path with the real absolute path.
-            // The pattern in coreBundle.js is:
-            //   packageRoot = import_path8.default.join(__dirname, "..");
+
+            // Patch 1: hardcode packageRoot to the actual playwright-core directory.
+            // This path exists on the build machine but NOT in SEA.
+            // We only need a valid path so the __esm init doesn't throw;
+            // packageJSON is inlined (Patch 2) and libPath() is never called.
+            // Pattern: packageRoot = import_path8.default.join(__dirname, "..");
+            const pwCoreDir = path.resolve(__dirname, '..', 'node_modules', 'playwright-core');
             contents = contents.replace(
               'packageRoot = import_path8.default.join(__dirname, "..")',
               'packageRoot = "' + pwCoreDir.replace(/\\/g, '\\\\') + '"'
             );
+
+            // Patch 2: inline packageJSON to avoid require() on a missing file.
+            // Pattern: packageJSON = require(import_path8.default.join(packageRoot, "package.json"));
+            var pkgJson = JSON.parse(fs.readFileSync(
+              require.resolve('playwright-core/package.json'), 'utf8'
+            ));
+            var inlinePkg = JSON.stringify({ name: pkgJson.name, version: pkgJson.version });
+            contents = contents.replace(
+              'packageJSON = require(import_path8.default.join(packageRoot, "package.json"))',
+              'packageJSON = ' + inlinePkg
+            );
+
+            // Patch 3: inline browsers.json to avoid require() on a missing file.
+            // Pattern: require(import_path19.default.join(packageRoot, "browsers.json"))
+            var browsersJson = JSON.parse(fs.readFileSync(
+              path.resolve(pwCoreDir, 'browsers.json'), 'utf8'
+            ));
+            contents = contents.replace(
+              'require(import_path19.default.join(packageRoot, "browsers.json"))',
+              JSON.stringify(browsersJson)
+            );
+
             return { contents, loader: 'js' };
           });
         },

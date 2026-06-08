@@ -84,115 +84,17 @@ function loadConfig() {
 loadConfig();
 
 // ============================================================
-// Lazy playwright-core loader
+// Browser detection (delegated to browser-detector module)
 // ============================================================
 
-/**
- * Load playwright-core dynamically.
- * Returns null if the module is not available (SEA binary has no native .node addons).
- */
-function loadPlaywright() {
-  try {
-    return require('playwright-core');
-  } catch (_) {
-    return null;
-  }
-}
+var browserDetector = require('./browser-detector');
+var loadPlaywright = browserDetector.loadPlaywright;
+var detectBrowser = browserDetector.detect;
+var NoBrowserFoundError = browserDetector.NoBrowserFoundError;
 
 // ============================================================
-// Browser detection (module-level cached)
+// NoBrowserFoundError (re-exported from browser-detector)
 // ============================================================
-
-/** @type {string|null|undefined} undefined = not checked yet, null = not found, string = found */
-var cachedBrowserPath = undefined;
-
-/**
- * Detect a Chromium-based browser executable path.
- *
- * Priority:
- *   1. User-provided path (explicitPath param / --browser)
- *   2. $CHROME_PATH or $BROWSER_PATH environment variable
- *   3. playwright-core channel detection (chrome, msedge, chromium)
- *   4. playwright-core managed browser (npx playwright install chromium)
- *   5. Config file `browser.searchPaths` (replaces hardcoded paths)
- *
- * @param {string} [explicitPath] - User-provided browser path (--browser)
- * @returns {string|null} Absolute path to browser executable, or null
- */
-function detectBrowser(explicitPath) {
-  // 1. User explicitly specified
-  if (explicitPath) {
-    if (fs.existsSync(explicitPath)) {
-      cachedBrowserPath = explicitPath;
-      return explicitPath;
-    }
-    // User specified a path but it doesn't exist — don't cache, return null
-    return null;
-  }
-
-  // 2. Environment variables
-  var envPath = process.env.CHROME_PATH || process.env.BROWSER_PATH || '';
-  if (envPath && fs.existsSync(envPath)) {
-    cachedBrowserPath = envPath;
-    return envPath;
-  }
-
-  // 3-4. playwright-core channel + managed browser detection
-  var pw = loadPlaywright();
-  if (pw) {
-    var channels = ['chrome', 'msedge', 'chromium'];
-    for (var i = 0; i < channels.length; i++) {
-      try {
-        var execPath = pw.chromium.executablePath({ channel: channels[i] });
-        if (execPath && fs.existsSync(execPath)) {
-          cachedBrowserPath = execPath;
-          return execPath;
-        }
-      } catch (_) {
-        // channel not available — continue
-      }
-    }
-
-    // Try managed browser (user may have run `npx playwright install chromium`)
-    try {
-      var managedPath = pw.chromium.executablePath();
-      if (managedPath && fs.existsSync(managedPath)) {
-        cachedBrowserPath = managedPath;
-        return managedPath;
-      }
-    } catch (_) {
-      // No managed browser — continue
-    }
-  }
-
-  // 5. Config file browser.searchPaths (user-defined, replaces hardcoded paths)
-  var searchPaths = CONFIG.browser.searchPaths;
-  for (var j = 0; j < searchPaths.length; j++) {
-    if (fs.existsSync(searchPaths[j])) {
-      cachedBrowserPath = searchPaths[j];
-      return searchPaths[j];
-    }
-  }
-
-  cachedBrowserPath = null;
-  return null;
-}
-
-// ============================================================
-// NoBrowserFoundError
-// ============================================================
-
-class NoBrowserFoundError extends Error {
-  constructor() {
-    super(
-      'No Chromium-based browser detected.\n' +
-      '  Install Chrome, Edge, or Chromium, or specify via:\n' +
-      '    --browser <path>\n' +
-      '    CHROME_PATH environment variable'
-    );
-    this.name = 'NoBrowserFoundError';
-  }
-}
 
 // ============================================================
 // Browser lifecycle helper
@@ -207,8 +109,8 @@ class NoBrowserFoundError extends Error {
 async function launchBrowser(opts) {
   opts = opts || {};
 
-  var execPath = detectBrowser(opts.browserPath);
-  if (!execPath) {
+  var info = detectBrowser(opts.browserPath, CONFIG.browser.searchPaths);
+  if (!info.available) {
     throw new NoBrowserFoundError();
   }
 
@@ -220,12 +122,12 @@ async function launchBrowser(opts) {
   }
 
   var browser = await pw.chromium.launch({
-    executablePath: execPath,
+    executablePath: info.executablePath,
     headless: true,
     args: CONFIG.browser.launchArgs,
   });
 
-  return { browser: browser, executablePath: execPath };
+  return { browser: browser, executablePath: info.executablePath };
 }
 
 // ============================================================
@@ -234,22 +136,16 @@ async function launchBrowser(opts) {
 
 /**
  * Check if a browser is available without launching it.
+ * Delegates to browser-detector module.
  * @param {string} [browserPath] - Explicit browser path to check first
  * @returns {{ available: boolean, executablePath: string|null }}
  */
 function checkBrowserAvailable(browserPath) {
-  var execPath = detectBrowser(browserPath);
+  var info = detectBrowser(browserPath, CONFIG.browser.searchPaths);
   return {
-    available: execPath !== null,
-    executablePath: execPath,
+    available: info.available,
+    executablePath: info.executablePath,
   };
-}
-
-/**
- * Reset the cached browser path (useful in tests).
- */
-function resetBrowserCache() {
-  cachedBrowserPath = undefined;
 }
 
 /**
@@ -352,7 +248,6 @@ module.exports = {
   htmlToPng,
   checkBrowserAvailable,
   detectBrowser,
-  resetBrowserCache,
   NoBrowserFoundError,
   CONFIG,
 };

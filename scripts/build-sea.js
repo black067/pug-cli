@@ -86,6 +86,28 @@ function toArrayBuffer(buf) {
 }
 
 /**
+ * Retry a synchronous operation that may fail with EBUSY (file locked by
+ * antivirus or previous process). Waits `delayMs` between attempts.
+ */
+function retrySync(fn, retries, delayMs) {
+  retries = retries || 5;
+  delayMs = delayMs || 200;
+  for (var i = 0; i < retries; i++) {
+    try {
+      return fn();
+    } catch (e) {
+      if (e.code === 'EBUSY' && i < retries - 1) {
+        if (i === 0) console.log('  (file locked, retrying...)');
+        var waitUntil = Date.now() + delayMs;
+        while (Date.now() < waitUntil) { /* busy-wait */ }
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+/**
  * Replace the icon resource of the output .exe with the custom ICO.
  * Node.js SEA does not support an `icon` config field; instead we post-process
  * the PE binary with resedit to swap the RT_ICON / RT_GROUP_ICON resources.
@@ -101,7 +123,7 @@ function setIcon() {
   const { NtExecutable, NtExecutableResource, Data, Resource } = require('resedit');
 
   // Read the output exe
-  const exeBuf = fs.readFileSync(OUTPUT_BINARY);
+  const exeBuf = retrySync(function () { return fs.readFileSync(OUTPUT_BINARY); });
   const exec = NtExecutable.from(toArrayBuffer(exeBuf), { ignoreCert: true });
   const res = NtExecutableResource.from(exec, true);
 
@@ -129,7 +151,7 @@ function setIcon() {
   // Write back
   res.outputResource(exec, false, true);
   const outBuf = Buffer.from(exec.generate());
-  fs.writeFileSync(OUTPUT_BINARY, outBuf);
+  retrySync(function () { fs.writeFileSync(OUTPUT_BINARY, outBuf); });
   console.log('Icon resource replaced.');
 }
 
@@ -144,7 +166,7 @@ function setVersionInfo() {
   console.log('Setting version info in executable...');
   const { NtExecutable, NtExecutableResource, Resource } = require('resedit');
 
-  const exeBuf = fs.readFileSync(OUTPUT_BINARY);
+  const exeBuf = retrySync(function () { return fs.readFileSync(OUTPUT_BINARY); });
   const exec = NtExecutable.from(toArrayBuffer(exeBuf), { ignoreCert: true });
   const res = NtExecutableResource.from(exec, true);
 
@@ -189,7 +211,7 @@ function setVersionInfo() {
 
   res.outputResource(exec, false, true);
   const outBuf = Buffer.from(exec.generate());
-  fs.writeFileSync(OUTPUT_BINARY, outBuf);
+  retrySync(function () { fs.writeFileSync(OUTPUT_BINARY, outBuf); });
   console.log('Version info set.');
 }
 

@@ -7,6 +7,7 @@ const pug = require('pug');
 const markupToPug = require('./markup2pug');
 const { htmlToSvg } = require('./html2svg');
 const { htmlToPng, checkBrowserAvailable, CONFIG } = require('./html2png');
+const browserDetector = require('./browser-detector');
 
 // ============================================================
 // Constants
@@ -328,6 +329,7 @@ function printUsage() {
   console.error('  -V, --version             Display version information');
   console.error('      --licence             Display license information');
   console.error('      --config-gen          Generate pug-cli.config.json template in current directory');
+  console.error('      --browser-detect      Show browser detection diagnostics (all levels)');
   console.error('      --mcp-server           Start MCP (Model Context Protocol) server');
   console.error('');
 }
@@ -471,6 +473,10 @@ function main() {
         return;
       case '--config-gen':
         generateConfigFile();
+        return;
+      case '--browser-detect':
+        var diag = browserDetector.getDiagnostics(opts.browserPath, CONFIG.browser.searchPaths);
+        console.log(JSON.stringify(diag, null, 2));
         return;
       case '--mcp-server':
         const { startMcpServer } = require('./mcp-core');
