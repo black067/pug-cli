@@ -53,10 +53,7 @@ html(lang="zh-CN", style="display: flex; flex-direction: column;")
     //- ═══════════════════════════════════════════
     //- 顶部标题栏
     //- ═══════════════════════════════════════════
-    header.bg-header(style="display: flex; align-items: center; justify-content: center; padding: 12px 16px; position: relative;")
-      // 返回按钮（左下角原则不适用于header内的返回，这是导航返回）
-      div(style="position: absolute; left: 16px; display: flex; align-items: center; gap: 2px; cursor: pointer;")
-        span(style="font-size: 18px; color: #4A90E2;") ◀
+    header.bg-header(style="display: flex; align-items: center; justify-content: center; padding: 12px 16px;")
       span.text-primary(style="font-size: 18px; font-weight: bold;") #{rankTitle}
 
     //- ═══════════════════════════════════════════
@@ -135,5 +132,5 @@ html(lang="zh-CN", style="display: flex; flex-direction: column;")
 
       //- 底部按钮栏
       div.bg-footer(style="display: flex; gap: 12px; padding: 10px 16px; border-top: 1px solid #E5E7EB;")
-        button.btn-secondary-bg.btn-secondary-text(style="flex: 1; padding: 12px 0; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center;") ◀ 返回
+        button.btn-secondary-bg.btn-secondary-text(style="width: 40px; height: 40px; padding: 0; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;") ◀
         button.btn-primary-bg.btn-primary-text(style="flex: 1; padding: 12px 0; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center;") 🎁 奖励预览

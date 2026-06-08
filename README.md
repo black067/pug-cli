@@ -59,6 +59,70 @@ node src/cli.js --config-gen
 node src/cli.js --mcp-server
 ```
 
+## 效果展示
+
+以下示例将 Pug 模板（含变量、mixin、循环、条件、CSS 类）一步渲染为 PNG 截图：
+
+<table>
+<tr>
+<th width="55%">源码（节选）</th>
+<th width="45%">渲染输出</th>
+</tr>
+<tr>
+<td>
+
+```pug
+//- ═══ 数据变量 ═══
+- var rankTitle = "战力排行榜"
+- var tabs = ["战力榜", "等级榜", "公会榜"]
+- var top3 = [
+    { name: "龙骑士·亚瑟", level: 80, score: 158888 },
+    { name: "暗影刺客·零", level: 78, score: 149999 },
+    { name: "圣光祭司·艾琳", level: 77, score: 142500 }
+  ]
+- var rankList = [
+    { rank: 4, name: "冰霜魔导·莉莉丝", level: 75, score: 135200 },
+    { rank: 5, name: "雷霆战锤·托尔", level: 74, score: 128900 }
+  ]
+
+//- ═══ Mixin：排名徽章 ═══
+mixin rankBadge(rank)
+  if rank <= 3
+    span 🥇 NO.#{rank}
+  else
+    span.text-tertiary #{rank}
+
+//- ═══ Mixin：排行行 ═══
+mixin rankRow(rank, name, level, score, isMe)
+  div(style="display:flex; align-items:center; padding:10px 16px")
+    +rankBadge(rank)
+    div(style="flex:1")
+      span #{name}
+      if isMe
+        span.tag 我
+    span #{score.toLocaleString()}
+
+//- ═══ Tab 切换栏 ═══
+nav.nav-bg
+  each tab, i in tabs
+    div(class=(i===0 ? 'nav-active' : 'nav-inactive')) #{tab}
+
+//- ═══ 循环渲染排名 ═══
+each item in rankList
+  +rankRow(item.rank, item.name, item.level, item.score, false)
+```
+
+</td>
+<td>
+
+![排行榜渲染结果](assets/rank-view.png)
+
+</td>
+</tr>
+</table>
+
+> 💡 完整源码：[tests/input/rank-view.pug](tests/input/rank-view.pug) — 包含 CSS 设计系统、Top 3 领奖台、底部固定栏等更多特性。
+
 ## 文档
 
 - **[CLI 使用手册](docs/cli-manual.md)** — 所有 CLI 命令、参数及行为详解
