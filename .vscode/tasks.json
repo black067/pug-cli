@@ -23,6 +23,19 @@
       "dependsOn": ["Build pug-cli (Bundle)"],
       "detail": "构建 Node.js SEA 独立可执行文件 (dist/pug-cli.exe)"
     },
-
+    {
+      "label": "Run All Tests",
+      "type": "shell",
+      "command": "node scripts/run-tests.js",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "detail": "依次运行 tests/ 下所有测试脚本并汇总结果"
+    }
   ]
 }
