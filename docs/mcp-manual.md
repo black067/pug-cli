@@ -154,10 +154,10 @@ node dist/pug-cli-bundled.js --mcp-server
 
 ### 5. `html_to_png` — HTML 渲染为 PNG
 
-通过 Playwright 无头 Chromium 渲染 HTML 为 PNG 图片。
+通过 Playwright 无头 Chromium 渲染 HTML 为 PNG 图片。**`output` 为必填参数**，PNG 始终写入磁盘。
 
-- 不指定 `output` → 返回 base64 编码的 `data:image/png` URI
-- 指定 `output` → 将 PNG 写入磁盘指定路径，同时仍返回 base64 URI
+- `output` 指定输出路径 → PNG 写入磁盘
+- 设 `returnBase64: true` → 同时返回 base64 data URI（默认不返回）
 
 **⚠️ 需要系统安装 Chrome / Edge / Chromium。** 若未检测到浏览器则报错。
 
@@ -166,7 +166,8 @@ node dist/pug-cli-bundled.js --mcp-server
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `source` | `string` | ✅ | — | HTML 源码或文件路径（自动检测） |
-| `output` | `string` | — | — | 输出文件路径。提供时 PNG 写入磁盘并持久保留；省略时仅返回 base64 data URI |
+| `output` | `string` | ✅ | — | **必填。** 输出文件路径（如 `"output.png"` 或 `"dist/result.png"`），PNG 写入磁盘并持久保留 |
+| `returnBase64` | `boolean` | — | false | 同时返回 base64 data URI（用于内联预览）。默认仅返回写入确认 |
 | `width` | `number` | — | 自动检测 → 800 | 视口宽度（像素） |
 | `height` | `number` | — | 自动检测 → 600 | 视口高度（像素） |
 | `scale` | `number` | — | 2 | 设备缩放因子（Retina） |
@@ -176,7 +177,7 @@ node dist/pug-cli-bundled.js --mcp-server
 | `basedir` | `string` | — | CWD | CSS 路径解析根目录。`<link href="...">` 的相对路径以此为基础解析并自动内联 |
 | `css` | `string` | — | — | **推荐方式**：直接传入 CSS 字符串，自动注入为内联 `<style>` 标签 |
 
-**返回：** MCP `resource` 类型内容，含 `data:image/png;base64,...` 格式的图片。若指定了 `output`，额外附带 `{"written": "<output路径>"}` 文本确认。
+**返回：** `{"written": "<output路径>"}` 文本确认。若 `returnBase64: true`，额外附带 `resource` 类型内容含 `data:image/png;base64,...`。
 
 **浏览器检测优先级：**
 1. `browserPath` 参数显式指定
@@ -191,17 +192,18 @@ node dist/pug-cli-bundled.js --mcp-server
 
 ### 6. `pug_to_png` — Pug 一步渲染为 PNG
 
-`pug_to_html` + `html_to_png` 的组合。接受 Pug 源码，内部自动编译为 HTML 再渲染为 PNG。
+`pug_to_html` + `html_to_png` 的组合。接受 Pug 源码，内部自动编译为 HTML 再渲染为 PNG。**`output` 为必填参数**，PNG 始终写入磁盘。
 
-- 不指定 `output` → 返回 base64 编码的 `data:image/png` URI
-- 指定 `output` → 将 PNG 写入磁盘指定路径，同时仍返回 base64 URI
+- `output` 指定输出路径 → PNG 写入磁盘
+- 设 `returnBase64: true` → 同时返回 base64 data URI（默认不返回）
 
 **参数：**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `source` | `string` | ✅ | — | Pug 源码或 `.pug` 文件路径（自动检测） |
-| `output` | `string` | — | — | 输出文件路径。提供时 PNG 写入磁盘并持久保留；省略时仅返回 base64 data URI |
+| `output` | `string` | ✅ | — | **必填。** 输出文件路径（如 `"output.png"` 或 `"dist/result.png"`），PNG 写入磁盘并持久保留 |
+| `returnBase64` | `boolean` | — | false | 同时返回 base64 data URI（用于内联预览）。默认仅返回写入确认 |
 | `filename` | `string` | — | — | Pug 虚拟文件名（使用 `extends`/`include` 时必填） |
 | `pretty` | `boolean` | — | false | 美化中间 HTML 输出 |
 | `doctype` | `string` | — | — | 覆盖 doctype |
@@ -215,7 +217,7 @@ node dist/pug-cli-bundled.js --mcp-server
 | `fullPage` | `boolean` | — | true | 全页截图 |
 | `browserPath` | `string` | — | 自动检测 | 浏览器路径 |
 
-**返回：** MCP `resource` 类型内容，含 `data:image/png;base64,...`。若指定了 `output`，额外附带 `{"written": "<output路径>"}` 文本确认。
+**返回：** `{"written": "<output路径>"}` 文本确认。若 `returnBase64: true`，额外附带 `resource` 类型内容含 `data:image/png;base64,...`。
 
 **浏览器不可用时的行为：** 与 `html_to_png` 不同，`pug_to_png` 在浏览器不可用时**不会直接报错**，而是：
 1. 将编译后的中间 HTML 保存到系统临时目录

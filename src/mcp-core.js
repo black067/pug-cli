@@ -314,69 +314,62 @@ async function handleHtmlToSvg(args) {
 }
 
 /**
- * Shared helper: render HTML to PNG and return as base64 data URI.
- * When args.output is provided, writes the PNG to that path and skips temp cleanup.
+ * Shared helper: render HTML to PNG and write to disk.
+ * `args.output` is required — the PNG is always persisted.
+ * Set `args.returnBase64: true` to also include a base64 data URI in the response.
  * Throws NoBrowserFoundError if no Chromium browser is available.
  * @param {string} html - The HTML source to render
- * @param {object} args - Image rendering args (width, height, scale, autoCrop, fullPage, browserPath, output)
+ * @param {object} args - Image rendering args (output required; width, height, scale, autoCrop, fullPage, browserPath, returnBase64 optional)
  * @returns {object} MCP response content
  */
 async function renderHtmlToImageResponse(html, args) {
+  // Guard: output is required (MCP schema says so, but not all clients enforce it)
+  if (!args.output) {
+    throw new Error('"output" parameter is required');
+  }
+
   // Check browser availability — let it crash if not found
   var browserInfo = checkBrowserAvailable();
   if (!browserInfo.available) {
     throw new NoBrowserFoundError();
   }
 
-  // Determine output path: user-specified → write to disk and keep; otherwise temp → base64 only
-  var outputPath = args.output ? path.resolve(args.output) : null;
-  var pngFile = outputPath || path.join(os.tmpdir(), 'pug-cli-temp-' + Date.now() + '.png');
-  var isTemp = !outputPath;
+  var outputPath = path.resolve(args.output);
 
   // Ensure output directory exists
-  if (outputPath) {
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  }
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-  try {
-    await htmlToPng(html, pngFile, {
-      width: args.width,
-      height: args.height,
-      scale: args.scale,
-      autoCrop: !!args.autoCrop,
-      fullPage: args.fullPage,
-      browserPath: args.browserPath,
-    });
+  await htmlToPng(html, outputPath, {
+    width: args.width,
+    height: args.height,
+    scale: args.scale,
+    autoCrop: !!args.autoCrop,
+    fullPage: args.fullPage,
+    browserPath: args.browserPath,
+  });
 
-    var pngBuffer = fs.readFileSync(pngFile);
+  var content = [
+    {
+      type: 'text',
+      text: JSON.stringify({ written: outputPath }),
+    },
+  ];
+
+  // Optionally include base64 data URI (e.g. for inline preview in chat)
+  if (args.returnBase64) {
+    var pngBuffer = await fs.promises.readFile(outputPath);
     var base64 = pngBuffer.toString('base64');
-
-    var content = [
-      {
-        type: 'resource',
-        resource: {
-          text: base64,
-          uri: 'data:image/png;base64,' + base64,
-          mimeType: 'image/png',
-        },
+    content.unshift({
+      type: 'resource',
+      resource: {
+        text: base64,
+        uri: 'data:image/png;base64,' + base64,
+        mimeType: 'image/png',
       },
-    ];
-
-    // When written to a user-specified disk path, append a text summary
-    if (outputPath) {
-      content.push({
-        type: 'text',
-        text: JSON.stringify({ written: outputPath }),
-      });
-    }
-
-    return { content: content };
-  } finally {
-    // Only clean up temp files, never user-specified output
-    if (isTemp) {
-      try { fs.unlinkSync(pngFile); } catch (_) {}
-    }
+    });
   }
+
+  return { content: content };
 }
 
 async function handleHtmlToPng(args) {
@@ -441,33 +434,21 @@ function startMcpServer() {
       instructions: [
         '## pug-mcp — Pug Template Tools',
         '',
-        '- **pug_to_html**: Compile Pug → HTML. Auto-detects inline code vs file/glob/directory. Use `output` to write files.',
-        '- **pug_to_js**: Compile Pug → client-side JS function. Use `module: true` for Node.js.',
+        '- **pug_to_html**: Compile Pug → HTML. Auto-detects inline code vs file/glob/directory.',
+        '- **pug_to_js**: Compile Pug → client-side JS function.',
         '- **html_to_pug**: Convert HTML/XML → Pug syntax.',
-        '- **html_to_svg**: Render HTML → SVG (Satori engine, Flexbox CSS). Width/height auto-detected from inline CSS.',
-        '- **html_to_png**: Render HTML → PNG (Playwright headless Chromium). Set `output` to a file path to write to disk. Fails if no browser detected.',
-        '- **pug_to_png**: Compile Pug → PNG in one step (Pug → HTML → PNG). Set `output` to a file path to write to disk. Fails if no browser detected, but saves intermediate HTML for inspection.',
+        '- **html_to_svg**: Render HTML → SVG (vector, Flexbox layout).',
+        '- **html_to_png**: Render HTML → PNG (raster, Chromium). `output` required. Set `returnBase64: true` for base64.',
+        '- **pug_to_png**: Compile Pug → PNG one-step. `output` required. Set `returnBase64: true` for base64.',
         '',
-        '### Path resolution',
-        '- All tools accept a `basedir` parameter — the base directory for resolving `include`/`extends` and `<link>` paths.',
-        '- `basedir` defaults to the directory of the input file, or the current working directory for inline source.',
-        '- **Convention**: Write all paths relative to `basedir`. Avoid absolute paths — they will fail on the target machine.',
-        '',
-        '### CSS handling',
-        '- `<link rel="stylesheet" href="...">` tags are auto-resolved relative to `basedir` and inlined as `<style>` before rendering.',
-        '- Missing stylesheets are kept as `<link>` with a `data-pug-cli-warn` attribute for diagnostics.',
-        '- **Recommended for agents**: Use the `css` parameter to pass CSS strings directly — no file path needed.',
-        '',
-        '### Tips',
-        '- Pug → SVG: compile with pug_to_html first, then pass the HTML to html_to_svg.',
-        '- Use `pretty: true` for readable HTML output.',
-        '- Pass template variables via `locals`: {"title": "Hello"}.',
-        '- For Pug extends/include, set `filename` to the template file path.',
-        '- Set `basedir` to define the root for all path resolution (include/extends + CSS links).',
-        '- **For CSS**: Prefer the `css` parameter (inline string) over `<link>` tags — no path resolution needed.',
-        '- Extra fonts for SVG: `fonts`: ["path/to/font.ttf"].',
-        '- PNG defaults (width, height, scale, fullPage, wrapperCss) follow convention over configuration. Create `pug-cli.config.json` to customize — run `pug-cli --config-gen` to generate a template.',
-        '- By convention, `fullPage` defaults to `true` (capture natural content height). Set `fullPage: false` explicitly to restrict to viewport.',
+        '### Conventions',
+        '- `basedir` is the root for all path resolution: include/extends + CSS `<link>`. Defaults to file dir or cwd.',
+        '- CSS: `<link>` tags auto-resolved relative to `basedir`. Prefer `css` param (inline string) — zero path dependency.',
+        '- Config: `pug-cli.config.json` sets defaults for width/height/scale/fullPage.',
+        '- `fullPage` defaults to `true` (capture natural content height). Set to `false` for viewport-only.',
+        '- Pug extends/include: set `filename` when source is inline.',
+        '- Pug → SVG: compile with pug_to_html first, then html_to_svg.',
+        '- Extra fonts for SVG: `fonts` param with paths to TTF/OTF/WOFF files.',
       ].join('\n'),
     }
   );
@@ -477,7 +458,7 @@ function startMcpServer() {
       tools: [
         {
           name: 'pug_to_html',
-          description: 'Compile Pug to HTML. Auto-detects input: inline Pug source, .pug file path, glob (e.g. "src/**/*.pug"), or directory. Single output returns raw HTML; multiple outputs return a {path: html} dict. Use `output` to write files to disk instead.',
+          description: 'Compile Pug to HTML. Auto-detects inline source, file path, glob, or directory.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -499,7 +480,7 @@ function startMcpServer() {
         },
         {
           name: 'pug_to_js',
-          description: 'Compile a Pug template to a client-side JavaScript function. Set `module: true` for CommonJS module.exports wrapping.',
+          description: 'Compile a Pug template to a client-side JavaScript function.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -525,7 +506,7 @@ function startMcpServer() {
         },
         {
           name: 'html_to_svg',
-          description: 'Render HTML to SVG via Satori (supports Flexbox CSS). Built-in fonts: Inter (Latin) + Noto Sans SC (CJK). Width/height auto-detected from inline CSS if omitted. For Pug input, compile with pug_to_html first. <link> stylesheets are auto-resolved relative to basedir and inlined. Use `css` to pass CSS directly.',
+          description: 'Render HTML to SVG (vector, Flexbox layout). For PNG raster output, use html_to_png. For Pug input, compile with pug_to_html first.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -542,31 +523,33 @@ function startMcpServer() {
         },
         {
           name: 'html_to_png',
-          description: 'Render HTML to PNG via Playwright (headless Chromium). Fails if no browser is detected. Uses system-installed Chrome/Edge/Chromium. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json. Set `output` to write the PNG to a user-specified file path; otherwise the image is returned as a base64 data URI. <link> stylesheets are auto-resolved relative to basedir and inlined. Use `css` to pass CSS directly.',
+          description: 'Render HTML to PNG (raster, Chromium). For SVG vector output, use html_to_svg. For Pug input, use pug_to_png. Requires Chromium browser.',
           inputSchema: {
             type: 'object',
             properties: {
               source: { type: 'string', description: 'HTML source code or a file path to read.' },
+              output: { type: 'string', description: '**Required.** File path to write the PNG to disk (e.g. "output.png" or "dist/result.png").' },
               width: { type: 'number', description: 'Viewport width in pixels. Auto-detected from content, then config default (800).' },
               height: { type: 'number', description: 'Viewport height in pixels. Auto-detected from content, then config default (600).' },
               scale: { type: 'number', description: 'Device scale factor / Retina. Config default: 2.' },
               autoCrop: { type: 'boolean', description: 'Auto-crop to content bounding box.' },
               fullPage: { type: 'boolean', description: 'Capture full scrollable page. Config default: true. Set to false to restrict to viewport.' },
               browserPath: { type: 'string', description: 'Explicit browser executable path.' },
-              output: { type: 'string', description: 'File path to write the PNG to disk. When provided, the file is persisted; otherwise only a base64 data URI is returned.' },
+              returnBase64: { type: 'boolean', default: false, description: 'Also return the PNG as a base64 data URI alongside the file write.' },
               basedir: { type: 'string', description: 'Base directory for resolving <link> href paths. Defaults to cwd.' },
               css: { type: 'string', description: 'CSS string to inject as an inline <style> tag. Recommended over external <link> for agent-generated templates.' },
             },
-            required: ['source'],
+            required: ['source', 'output'],
           },
         },
         {
           name: 'pug_to_png',
-          description: 'Compile Pug to PNG in one step. Accepts inline Pug source or .pug file path. Internally compiles to HTML, then renders to PNG via Playwright. Fails if no browser is detected, but saves intermediate HTML for inspection. Config defaults (fullPage, scale, wrapperCss) are loaded from pug-cli.config.json. Set `output` to write the PNG to a user-specified file path; otherwise the image is returned as a base64 data URI.',
+          description: 'Compile Pug to PNG in one step (Pug→HTML→PNG). For HTML input, use html_to_png. Requires Chromium browser.',
           inputSchema: {
             type: 'object',
             properties: {
               source: { type: 'string', description: 'Pug template source code or a .pug file path to read.' },
+              output: { type: 'string', description: '**Required.** File path to write the PNG to disk (e.g. "output.png" or "dist/result.png").' },
               filename: { type: 'string', description: 'Virtual filename for Pug error traces and basedir. Required for extends/include resolution.' },
               pretty: { type: 'boolean', description: 'Pretty-print intermediate HTML output (only affects Pug compilation).' },
               doctype: { type: 'string', description: 'Override doctype (html, xml, transitional, etc.).' },
@@ -579,9 +562,9 @@ function startMcpServer() {
               autoCrop: { type: 'boolean', description: 'Auto-crop to content bounding box.' },
               fullPage: { type: 'boolean', description: 'Capture full scrollable page. Config default: true. Set to false to restrict to viewport.' },
               browserPath: { type: 'string', description: 'Explicit browser executable path.' },
-              output: { type: 'string', description: 'File path to write the PNG to disk. When provided, the file is persisted; otherwise only a base64 data URI is returned.' },
+              returnBase64: { type: 'boolean', default: false, description: 'Also return the PNG as a base64 data URI alongside the file write.' },
             },
-            required: ['source'],
+            required: ['source', 'output'],
           },
         },
       ],
