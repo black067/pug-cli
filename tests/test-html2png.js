@@ -76,19 +76,20 @@ async function run() {
   });
 
   // --- detectBrowser() ---
-  test('detectBrowser returns null for nonexistent explicit path', function () {
+  test('detectBrowser returns null .executablePath for nonexistent explicit path', function () {
     resetBrowserCache();
     var result = detectBrowser('C:\\nonexistent\\chrome.exe');
-    // Should return null for nonexistent path
-    if (result !== null) throw new Error('Expected null, got: ' + result);
+    // detectBrowser returns { available, executablePath, source }
+    if (result.available !== false) throw new Error('Expected available=false, got: ' + JSON.stringify(result));
+    if (result.executablePath !== null) throw new Error('Expected executablePath=null, got: ' + result.executablePath);
   });
 
-  test('detectBrowser returns path for existing explicit path (this script itself)', function () {
+  test('detectBrowser returns path for existing explicit path', function () {
     resetBrowserCache();
-    // Use the current script file as a "fake browser" — it exists
     var existing = __filename;
     var result = detectBrowser(existing);
-    if (result !== existing) throw new Error('Expected ' + existing + ', got: ' + result);
+    if (result.available !== true) throw new Error('Expected available=true, got: ' + JSON.stringify(result));
+    if (result.executablePath !== existing) throw new Error('Expected ' + existing + ', got: ' + result.executablePath);
   });
 
   test('detectBrowser handles environment variable CHROME_PATH', function () {
@@ -97,7 +98,8 @@ async function run() {
     process.env.CHROME_PATH = existing;
     var result = detectBrowser();
     delete process.env.CHROME_PATH;
-    if (result !== existing) throw new Error('Expected ' + existing + ', got: ' + result);
+    if (result.available !== true) throw new Error('Expected available=true, got: ' + JSON.stringify(result));
+    if (result.executablePath !== existing) throw new Error('Expected ' + existing + ', got: ' + result.executablePath);
   });
 
   test('detectBrowser handles environment variable BROWSER_PATH', function () {
@@ -106,17 +108,21 @@ async function run() {
     process.env.BROWSER_PATH = existing;
     var result = detectBrowser();
     delete process.env.BROWSER_PATH;
-    if (result !== existing) throw new Error('Expected ' + existing + ', got: ' + result);
+    if (result.available !== true) throw new Error('Expected available=true, got: ' + JSON.stringify(result));
+    if (result.executablePath !== existing) throw new Error('Expected ' + existing + ', got: ' + result.executablePath);
   });
 
-  test('detectBrowser returns null when nothing matches', function () {
+  test('detectBrowser returns null .executablePath when nothing matches', function () {
     resetBrowserCache();
     // Clear env vars
     delete process.env.CHROME_PATH;
     delete process.env.BROWSER_PATH;
     var result = detectBrowser();
-    // May be null or a real path depending on system — just verify it's a string or null
-    if (result !== null && typeof result !== 'string') throw new Error('Expected string or null, got: ' + typeof result);
+    // May be null or a real path depending on system — verify it returns the expected shape
+    if (typeof result.available !== 'boolean') throw new Error('available should be boolean, got: ' + typeof result.available);
+    if (result.executablePath !== null && typeof result.executablePath !== 'string') {
+      throw new Error('executablePath should be string or null, got: ' + typeof result.executablePath);
+    }
   });
 
   // --- checkBrowserAvailable() ---

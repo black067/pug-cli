@@ -244,10 +244,19 @@ async function htmlToPng(htmlString, outputPath, opts) {
   }
 }
 
+/**
+ * Clear the browser detection cache so the next detectBrowser() call
+ * runs the full detection chain from scratch.
+ */
+function resetBrowserCache() {
+  browserDetector.clearCache();
+}
+
 module.exports = {
   htmlToPng,
   checkBrowserAvailable,
   detectBrowser,
+  resetBrowserCache,
   NoBrowserFoundError,
   CONFIG,
 };
