@@ -300,7 +300,6 @@ var OPTIONS = [
   // -- Info actions -----------------------------------------------------------
   { group: 'Info', long: '--help',             short: '-h',  type: 'action', action: 'help',          desc: 'Display this help message' },
   { group: 'Info', long: '--version',          short: '-V',  type: 'action', action: 'version',       desc: 'Display version information' },
-  { group: 'Info', long: '--licence',                        type: 'action', action: 'license',       desc: 'Display license information' },
   { group: 'Info', long: '--config-gen',                     type: 'action', action: 'configGen',     desc: 'Generate pug-cli.config.json template in current directory' },
   { group: 'Info', long: '--browser-detect',                 type: 'action', action: 'browserDetect', desc: 'Show browser detection diagnostics (all levels)' },
   { group: 'Info', long: '--mcp-server',                     type: 'action', action: 'mcpServer',     desc: 'Start MCP (Model Context Protocol) server' },
@@ -365,7 +364,7 @@ function renderHelp() {
 
   // Collect info actions separately
   var infoActions = [
-    byName['--help'], byName['--version'], byName['--licence'],
+    byName['--help'], byName['--version'],
     byName['--config-gen'], byName['--browser-detect'], byName['--mcp-server'],
   ];
 
@@ -462,7 +461,6 @@ function parseOption(args, startIdx, opts) {
     var actionMap = {
       help:          function () { printUsage(false); },
       version:       function () { printVersion(); },
-      license:       function () { printLicense(); },
       configGen:     function () { generateConfigFile(); },
       browserDetect: function () { var diag = browserDetector.getDiagnostics(opts.browserPath, CONFIG.browser.searchPaths); console.log(JSON.stringify(diag, null, 2)); },
       mcpServer:     function () { var m = require('./mcp-core'); m.startMcpServer(); },
@@ -525,35 +523,7 @@ function printVersion() {
   var pkg = require('../package.json');
   var pugPkg = require('pug/package.json');
   console.log('pug-cli v' + pkg.version + ' (pug v' + pugPkg.version + ')');
-}
-
-function printLicense() {
-  var licenseText = [
-    '',
-    'MIT License',
-    '',
-    'Copyright (c) 2009-2014 TJ Holowaychuk <tj@vision-media.ca>',
-    '',
-    'Permission is hereby granted, free of charge, to any person obtaining a copy',
-    'of this software and associated documentation files (the "Software"), to deal',
-    'in the Software without restriction, including without limitation the rights',
-    'to use, copy, modify, merge, publish, distribute, sublicense, and/or sell',
-    'copies of the Software, and to permit persons to whom the Software is',
-    'furnished to do so, subject to the following conditions:',
-    '',
-    'The above copyright notice and this permission notice shall be included in',
-    'all copies or substantial portions of the Software.',
-    '',
-    'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR',
-    'IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY',
-    'FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE',
-    'AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER',
-    'LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM',
-    'OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN',
-    'THE SOFTWARE.',
-    ''
-  ].join('\n');
-  console.log(licenseText);
+  console.log('License: MIT');
 }
 
 function generateConfigFile() {
