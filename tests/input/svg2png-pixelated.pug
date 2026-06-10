@@ -1,0 +1,41 @@
+//- tests/input/svg2png-pixelated.pug
+//- Win98-style checked checkbox → pixel art PNG
+//- 方案: <img> + data URI + image-rendering: pixelated
+//- CLI:  <cli> --to-png tests/input/svg2png-pixelated.pug --out tests/output --width 13 --height 13 --scale 0.2
+//- MCP:  pug_to_png source=tests/input/svg2png-pixelated.pug
+//-               output=tests/output/svg2png-pixelated.png
+//-               width=13 height=13 scale=0.2
+//- 原理: CSS 65px × scale 0.2 = 13 物理像素 → 13×13 像素风 sprite
+-
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 13" width="13" height="13" shape-rendering="crispEdges">'
+    + '<rect x="0" y="0" width="13" height="13" fill="#c0c0c0"/>'
+    //- 3D sunken outer border: top/left dark, bottom/right light
+    + '<rect x="0" y="0" width="13" height="1" fill="#808080"/>'
+    + '<rect x="0" y="0" width="1" height="13" fill="#808080"/>'
+    + '<rect x="0" y="12" width="13" height="1" fill="#fff"/>'
+    + '<rect x="12" y="0" width="1" height="13" fill="#fff"/>'
+    //- 3D sunken inner border: deeper shadow top/left, lighter bottom/right
+    + '<rect x="1" y="1" width="11" height="1" fill="#404040"/>'
+    + '<rect x="1" y="1" width="1" height="11" fill="#404040"/>'
+    + '<rect x="1" y="11" width="11" height="1" fill="#dfdfdf"/>'
+    + '<rect x="11" y="1" width="1" height="11" fill="#dfdfdf"/>'
+    //- White interior
+    + '<rect x="2" y="2" width="9" height="9" fill="#fff"/>'
+    //- Checkmark: classic Windows 98 angled hook
+    + '<polyline points="3,6 5,8 10,3" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square" stroke-linejoin="miter"/>'
+    + '</svg>';
+  var dataUri = 'data:image/svg+xml,' + encodeURIComponent(svg);
+
+doctype html
+html
+  head
+    style.
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { margin:0; padding:0; background:#c0c0c0; }
+      img { display:block; image-rendering:pixelated; image-rendering:crisp-edges; }
+  body
+    img(
+      src=dataUri
+      width="13" height="13"
+      style="width:65px; height:65px"
+    )

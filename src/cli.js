@@ -289,7 +289,7 @@ function startWatch(files, opts) {
 //   flag    → opts[key] = !invert
 //   str     → opts[key] = value
 //   path    → opts[key] = path.resolve(value)
-//   num     → opts[key] = parseInt(value), validated > 0
+//   num     → opts[key] = parseFloat(val), validated >= 0.1
 //   json    → opts[key] = resolveLocals(value)
 //   list    → (opts[key] || []).push(value)
 //   filter  → opts.filters[name] = require(resolved module)
@@ -496,9 +496,9 @@ function parseOption(args, startIdx, opts) {
   } else if (def.type === 'path') {
     opts[def.key] = path.resolve(val);
   } else if (def.type === 'num') {
-    var n = parseInt(val, 10);
-    if (isNaN(n) || n <= 0) {
-      console.error('Error: ' + def.long + ' must be a positive number');
+    var n = parseFloat(val);
+    if (isNaN(n) || n < 0.1) {
+      console.error('Error: ' + def.long + ' must be >= 0.1');
       process.exit(EXIT_FAILURE);
     }
     if (def.set) { def.set(opts, n); }
