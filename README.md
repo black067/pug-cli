@@ -133,7 +133,7 @@ each item in rankList
 - **pug** — Pug 模板引擎（核心编译）
 - **@modelcontextprotocol/sdk** — MCP 协议支持
 - **satori** + **satori-html** — HTML→SVG 渲染（Flexbox CSS）
-- **playwright-core** — HTML→PNG 渲染（无头 Chromium，约 5MB，不捆绑浏览器）
+- **playwright-core** — HTML→PNG 渲染
 - **htmlparser2** — HTML→Pug 反向转换
 
 ## 配置文件

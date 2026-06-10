@@ -432,7 +432,7 @@ function startMcpServer() {
     {
       capabilities: { tools: {} },
       instructions: [
-        '## pug-mcp — Pug Template Tools',
+        '## pug-mcp',
         '',
         '- **pug_to_html**: Compile Pug → HTML. Auto-detects inline code vs file/glob/directory.',
         '- **pug_to_js**: Compile Pug → client-side JS function.',
@@ -449,6 +449,10 @@ function startMcpServer() {
         '- Pug extends/include: set `filename` when source is inline.',
         '- Pug → SVG: compile with pug_to_html first, then html_to_svg.',
         '- Extra fonts for SVG: `fonts` param with paths to TTF/OTF/WOFF files.',
+        '',
+        '## Reference',
+        '',
+        'See [Manual](https://raw.githubusercontent.com/black067/pug-cli/refs/heads/main/docs/mcp-manual.md) for detailed documentation, examples, and troubleshooting.',
       ].join('\n'),
     }
   );
