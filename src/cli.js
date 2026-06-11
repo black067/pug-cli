@@ -38,6 +38,26 @@ function resolveLocals(objStr) {
 function buildPugOptions(filePath, opts) {
   var basedir = opts.basedir || path.dirname(filePath);
 
+  // Pug plugin: makes ALL include/extends paths resolve from basedir.
+  // Must be a plugin (not options.resolve) because pug's compileBody
+  // wraps resolve and only delegates to plugin-provided resolve functions.
+  var basedirResolvePlugin = {
+    resolve: function (includePath, source, options) {
+      includePath = includePath.trim();
+      if (includePath[0] === '/' && !options.basedir)
+        throw new Error('the "basedir" option is required to use includes and extends with "absolute" paths');
+      if (includePath[0] !== '/' && !source && !options.basedir)
+        throw new Error('the "filename" option is required to use includes and extends with "relative" paths');
+      return path.resolve(options.basedir, includePath);
+    },
+  };
+
+  // Merge with user-provided plugins (if any)
+  var plugins = [basedirResolvePlugin];
+  if (opts.plugins && opts.plugins.length > 0) {
+    plugins = plugins.concat(opts.plugins);
+  }
+
   return {
     filename: filePath,
     basedir: basedir,
@@ -48,19 +68,7 @@ function buildPugOptions(filePath, opts) {
     self: !!opts.self,
     cache: !!opts.cache,
     filters: opts.filters && Object.keys(opts.filters).length > 0 ? opts.filters : undefined,
-    plugins: opts.plugins && opts.plugins.length > 0 ? opts.plugins : undefined,
-    // Custom resolve: all include/extends paths resolve from basedir.
-    // Pug's default only uses basedir for absolute paths (starting with /);
-    // we extend it so that relative paths also resolve from basedir,
-    // making basedir the single root for all path resolution.
-    resolve: function (includePath, source, options) {
-      includePath = includePath.trim();
-      if (includePath[0] === '/' && !options.basedir)
-        throw new Error('the "basedir" option is required to use includes and extends with "absolute" paths');
-      if (includePath[0] !== '/' && !source && !options.basedir)
-        throw new Error('the "filename" option is required to use includes and extends with "relative" paths');
-      return path.resolve(options.basedir, includePath);
-    },
+    plugins: plugins,
   };
 }
 

@@ -22,16 +22,10 @@ function buildPugOptions(opts) {
   var filename = opts.filename || 'input.pug';
   var basedir = opts.basedir || (opts.filename ? path.dirname(opts.filename) : process.cwd());
 
-  return {
-    filename: filename,
-    basedir: basedir,
-    pretty: !!opts.pretty,
-    compileDebug: false,
-    doctype: opts.doctype || undefined,
-    // Custom resolve: all include/extends paths resolve from basedir.
-    // Pug's default only uses basedir for absolute paths (starting with /);
-    // we extend it so that relative paths also resolve from basedir,
-    // making basedir the single root for all path resolution.
+  // Pug plugin: makes ALL include/extends paths resolve from basedir.
+  // Must be a plugin (not options.resolve) because pug's compileBody
+  // wraps resolve and only delegates to plugin-provided resolve functions.
+  var basedirResolvePlugin = {
     resolve: function (includePath, source, options) {
       includePath = includePath.trim();
       if (includePath[0] === '/' && !options.basedir)
@@ -40,6 +34,15 @@ function buildPugOptions(opts) {
         throw new Error('the "filename" option is required to use includes and extends with "relative" paths');
       return path.resolve(options.basedir, includePath);
     },
+  };
+
+  return {
+    filename: filename,
+    basedir: basedir,
+    pretty: !!opts.pretty,
+    compileDebug: false,
+    doctype: opts.doctype || undefined,
+    plugins: [basedirResolvePlugin],
   };
 }
 
