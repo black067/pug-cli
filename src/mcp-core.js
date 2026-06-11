@@ -98,6 +98,81 @@ function expandInput(entry) {
   return [{ type: 'inline', source: entry }];
 }
 
+/**
+ * Normalize `source` arg (string | string[]) into a flat task list.
+ * All tools use this for unified auto-detect: file / glob / dir / inline.
+ * @param {string|string[]} source
+ * @returns {{ type:'file', path:string } | { type:'inline', source:string }}[]
+ */
+function expandSource(source) {
+  var raw = Array.isArray(source) ? source : [source];
+  var seen = {};
+  var tasks = [];
+  for (var i = 0; i < raw.length; i++) {
+    var expanded = expandInput(raw[i]);
+    for (var j = 0; j < expanded.length; j++) {
+      var t = expanded[j];
+      if (t.type === 'file') {
+        if (seen[t.path]) continue;
+        seen[t.path] = true;
+      }
+      tasks.push(t);
+    }
+  }
+  return tasks;
+}
+
+/**
+ * Write results to disk with auto-adapting output semantics.
+ *
+ * - 1 result  → `output` is treated as a **single file path**.
+ * - N results → `output` is treated as a **directory**; files are named
+ *   after their source basename (with defaultExt).
+ *
+ * @param {{ key:string, content:string }[]} results
+ * @param {string} output - target path (file or directory, auto-detected)
+ * @param {string} defaultExt - file extension for inline sources (e.g. '.html')
+ * @returns {{ written:number, files:{input,output}[] }}
+ */
+function writeResults(results, output, defaultExt) {
+  var isSingle = results.length === 1;
+  var outDir, outPath;
+
+  if (isSingle) {
+    outPath = path.resolve(output);
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    fs.writeFileSync(outPath, results[0].content, 'utf8');
+    return { written: 1, files: [{ input: results[0].key, output: outPath }] };
+  }
+
+  // Multi-result → directory
+  outDir = path.resolve(output);
+  fs.mkdirSync(outDir, { recursive: true });
+  var written = [];
+  var nameCounts = {};
+
+  for (var wi = 0; wi < results.length; wi++) {
+    var r = results[wi];
+    var basename = (r.key.indexOf('(inline:') === 0)
+      ? 'output' + defaultExt
+      : path.basename(r.key, path.extname(r.key)) + defaultExt;
+
+    var cnt = nameCounts[basename] || 0;
+    nameCounts[basename] = cnt + 1;
+    if (cnt > 0) {
+      var ext = path.extname(basename);
+      var stem = path.basename(basename, ext);
+      basename = stem + '-' + cnt + ext;
+    }
+
+    var filePath = path.join(outDir, basename);
+    fs.writeFileSync(filePath, r.content, 'utf8');
+    written.push({ input: r.key, output: filePath });
+  }
+
+  return { written: written.length, files: written };
+}
+
 // ============================================================
 // CSS resolution helper
 // ============================================================
@@ -161,285 +236,241 @@ function resolveAndInlineCss(htmlString, basedir, extraCss) {
 }
 
 // ============================================================
-// Tool handlers
+// Shared compile pipeline
 // ============================================================
 
-function handlePugToHtml(args) {
-  var raw = Array.isArray(args.source) ? args.source : [args.source];
-
-  // Expand all entries, deduplicate files
-  var seen = {};
-  var tasks = [];
-  for (var i = 0; i < raw.length; i++) {
-    var expanded = expandInput(raw[i]);
-    for (var j = 0; j < expanded.length; j++) {
-      var task = expanded[j];
-      if (task.type === 'file') {
-        if (seen[task.path]) continue;
-        seen[task.path] = true;
-      }
-      tasks.push(task);
-    }
-  }
-
-  // Compile each task
-  var results = [];   // [{ key, html }]
+/**
+ * Run compileFn on every task, collect results/errors, then either write
+ * to disk (if args.output) or return inline.  Covers the common loop +
+ * output pattern used by pug_to_html / pug_to_js / html_to_pug / html_to_svg.
+ *
+ * @param {{ type, path?, source? }[]} tasks  — from expandSource()
+ * @param {object}   args                     — tool arguments
+ * @param {Function} compileFn(task, args)    — returns content string
+ * @param {string}   defaultExt               — e.g. '.html'
+ * @returns {object} MCP response
+ */
+function processTasks(tasks, args, compileFn, defaultExt) {
+  var results = [];
   var errors = [];
   var inlineSeq = 0;
 
-  for (var k = 0; k < tasks.length; k++) {
-    var t = tasks[k];
+  for (var i = 0; i < tasks.length; i++) {
+    var t = tasks[i];
     try {
-      var source, filename;
-      if (t.type === 'file') {
-        source = fs.readFileSync(t.path, 'utf8');
-        filename = t.path;
-      } else {
-        source = t.source;
-        filename = args.filename;
-      }
-
-      var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype, basedir: args.basedir });
-      var fn = pug.compile(source, opts);
-      var html = fn(args.locals || {});
-
+      var content = compileFn(t, args);
       var key = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
-      results.push({ key: key, html: html });
+      results.push({ key: key, content: content });
     } catch (err) {
       var errKey = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
       errors.push({ input: errKey, error: err.message || String(err) });
     }
   }
 
-  // All failed
   if (results.length === 0 && errors.length > 0) {
-    return {
-      content: [{ type: 'text', text: 'All compilations failed:\n' + JSON.stringify(errors, null, 2) }],
-      isError: true,
-    };
+    return { content: [{ type: 'text', text: 'All tasks failed:\n' + JSON.stringify(errors, null, 2) }], isError: true };
   }
 
-  // --- Output: write to disk ---
-  // Prefer 'outDir' (semantically clear); fall back to 'output' for backward compat.
-  var outputDir = args.outDir || args.output;
-  if (outputDir) {
-    var outDir = path.resolve(outputDir);
-    fs.mkdirSync(outDir, { recursive: true });
-    var written = [];
-    var writeErrors = [];
-    var nameCounts = {};  // basename → count, for collision avoidance
-
-    for (var wi = 0; wi < results.length; wi++) {
-      var r = results[wi];
-      try {
-        var basename = (r.key.indexOf('(inline:') === 0)
-          ? 'output.html'
-          : path.basename(r.key, path.extname(r.key)) + '.html';
-
-        var cnt = nameCounts[basename] || 0;
-        nameCounts[basename] = cnt + 1;
-        if (cnt > 0) {
-          var ext = path.extname(basename);
-          var stem = path.basename(basename, ext);
-          basename = stem + '-' + cnt + ext;
-        }
-
-        var outPath = path.join(outDir, basename);
-        fs.writeFileSync(outPath, r.html, 'utf8');
-        written.push({ input: r.key, output: outPath });
-      } catch (err) {
-        writeErrors.push({ input: r.key, error: err.message || String(err) });
-      }
-    }
-
-    var summary = {
-      written: written.length,
-      failed: errors.length + writeErrors.length,
-      files: written,
-    };
+  if (args.output) {
+    var summary = writeResults(results, args.output, defaultExt);
+    summary.failed = errors.length;
     if (errors.length) summary.compileErrors = errors;
-    if (writeErrors.length) summary.writeErrors = writeErrors;
     return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
   }
 
-  // --- Output: return inline ---
-  // Single result → raw HTML
   if (results.length === 1 && errors.length === 0) {
-    return { content: [{ type: 'text', text: results[0].html }] };
+    return { content: [{ type: 'text', text: results[0].content }] };
   }
 
-  // Multiple results → dict
   var dict = {};
-  for (var di = 0; di < results.length; di++) {
-    dict[results[di].key] = results[di].html;
-  }
+  for (var di = 0; di < results.length; di++) { dict[results[di].key] = results[di].content; }
   var msg = JSON.stringify(dict, null, 2);
-  if (errors.length) {
-    msg += '\n\n// Compile errors:\n' + JSON.stringify(errors, null, 2);
-  }
+  if (errors.length) msg += '\n\nErrors:\n' + JSON.stringify(errors, null, 2);
   return { content: [{ type: 'text', text: msg }] };
 }
 
-function handlePugToJs(args) {
-  var source = args.source;
-  var filename = args.filename;
+/** Async variant — compileFn may return a Promise. */
+async function processTasksAsync(tasks, args, compileFn, defaultExt) {
+  var results = [];
+  var errors = [];
+  var inlineSeq = 0;
 
-  // Auto-detect: if source is an existing file path, read it
-  var resolved = path.resolve(source);
-  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
-    source = fs.readFileSync(resolved, 'utf8');
-    filename = filename || resolved;
+  for (var i = 0; i < tasks.length; i++) {
+    var t = tasks[i];
+    try {
+      var content = await compileFn(t, args);
+      var key = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
+      results.push({ key: key, content: content });
+    } catch (err) {
+      var errKey = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
+      errors.push({ input: errKey, error: err.message || String(err) });
+    }
   }
 
-  var opts = buildPugOptions({ filename: filename, basedir: args.basedir });
-  opts.module = !!args.module;
-  if (args.name) opts.name = args.name;
-  var js = pug.compileClient(source, opts);
-  return { content: [{ type: 'text', text: js }] };
+  if (results.length === 0 && errors.length > 0) {
+    return { content: [{ type: 'text', text: 'All tasks failed:\n' + JSON.stringify(errors, null, 2) }], isError: true };
+  }
+
+  if (args.output) {
+    var summary = writeResults(results, args.output, defaultExt);
+    summary.failed = errors.length;
+    if (errors.length) summary.compileErrors = errors;
+    return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
+  }
+
+  if (results.length === 1 && errors.length === 0) {
+    return { content: [{ type: 'text', text: results[0].content }] };
+  }
+
+  var dict = {};
+  for (var di = 0; di < results.length; di++) { dict[results[di].key] = results[di].content; }
+  var msg = JSON.stringify(dict, null, 2);
+  if (errors.length) msg += '\n\nErrors:\n' + JSON.stringify(errors, null, 2);
+  return { content: [{ type: 'text', text: msg }] };
+}
+
+// ============================================================
+// Tool handlers
+// ============================================================
+
+function handlePugToHtml(args) {
+  return processTasks(expandSource(args.source), args, function (t) {
+    var source = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
+    var filename = t.type === 'file' ? t.path : args.filename;
+    var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype, basedir: args.basedir });
+    return pug.compile(source, opts)(args.locals || {});
+  }, '.html');
+}
+
+function handlePugToJs(args) {
+  return processTasks(expandSource(args.source), args, function (t) {
+    var source = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
+    var filename = t.type === 'file' ? t.path : args.filename;
+    var opts = buildPugOptions({ filename: filename, basedir: args.basedir });
+    opts.module = !!args.module;
+    if (args.name) opts.name = args.name;
+    return pug.compileClient(source, opts);
+  }, '.js');
 }
 
 function handleHtmlToPug(args) {
-  var source = args.source;
-
-  // Auto-detect: if source is an existing file path, read it
-  var resolved = path.resolve(source);
-  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
-    source = fs.readFileSync(resolved, 'utf8');
-  }
-
-  var pugSource = markupToPug.markupToPug(source);
-  return { content: [{ type: 'text', text: pugSource }] };
+  return processTasks(expandSource(args.source), args, function (t) {
+    var source = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
+    return markupToPug.markupToPug(source);
+  }, '.pug');
 }
 
 async function handleHtmlToSvg(args) {
-  var htmlSource = args.source;
-
-  // Auto-detect: if source is an existing file path, read it
-  var resolved = path.resolve(htmlSource);
-  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
-    htmlSource = fs.readFileSync(resolved, 'utf8');
-  }
-
-  // Resolve CSS: inline <link> tags + inject extra css string
-  htmlSource = resolveAndInlineCss(htmlSource, args.basedir, args.css);
-
-  var svg = await htmlToSvg(htmlSource, {
-    width: args.width,
-    height: args.height,
-    extraFonts: args.fonts || [],
-    debug: !!args.debug,
-  });
-
-  return { content: [{ type: 'text', text: svg }] };
-}
-
-/**
- * Shared helper: render HTML to PNG and write to disk.
- * `args.output` is required — the PNG is always persisted.
- * Set `args.returnBase64: true` to also include a base64 data URI in the response.
- * Throws NoBrowserFoundError if no Chromium browser is available.
- * @param {string} html - The HTML source to render
- * @param {object} args - Image rendering args (output required; width, height, scale, autoCrop, fullPage, browserPath, returnBase64 optional)
- * @returns {object} MCP response content
- */
-async function renderHtmlToImageResponse(html, args) {
-  // Guard: output is required (MCP schema says so, but not all clients enforce it)
-  if (!args.output) {
-    throw new Error('"output" parameter is required');
-  }
-
-  // Check browser availability — let it crash if not found
-  var browserInfo = checkBrowserAvailable();
-  if (!browserInfo.available) {
-    throw new NoBrowserFoundError();
-  }
-
-  var outputPath = path.resolve(args.output);
-
-  // Ensure output directory exists
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-
-  await htmlToPng(html, outputPath, {
-    width: args.width,
-    height: args.height,
-    scale: args.scale,
-    autoCrop: !!args.autoCrop,
-    fullPage: args.fullPage,
-    browserPath: args.browserPath,
-  });
-
-  var content = [
-    {
-      type: 'text',
-      text: JSON.stringify({ written: outputPath }),
-    },
-  ];
-
-  // Optionally include base64 data URI (e.g. for inline preview in chat)
-  if (args.returnBase64) {
-    var pngBuffer = await fs.promises.readFile(outputPath);
-    var base64 = pngBuffer.toString('base64');
-    content.unshift({
-      type: 'resource',
-      resource: {
-        text: base64,
-        uri: 'data:image/png;base64,' + base64,
-        mimeType: 'image/png',
-      },
+  return await processTasksAsync(expandSource(args.source), args, async function (t) {
+    var htmlSource = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
+    htmlSource = resolveAndInlineCss(htmlSource, args.basedir, args.css);
+    return await htmlToSvg(htmlSource, {
+      width: args.width, height: args.height,
+      extraFonts: args.fonts || [], debug: !!args.debug,
     });
-  }
-
-  return { content: content };
+  }, '.svg');
 }
 
 async function handleHtmlToPng(args) {
-  var htmlSource = args.source;
-
-  // Auto-detect: if source is an existing file path, read it
-  var resolved = path.resolve(htmlSource);
-  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
-    htmlSource = fs.readFileSync(resolved, 'utf8');
-  }
-
-  // Resolve CSS: inline <link> tags + inject extra css string
-  htmlSource = resolveAndInlineCss(htmlSource, args.basedir, args.css);
-
-  return await renderHtmlToImageResponse(htmlSource, args);
+  return await renderPngFromTasks(
+    expandSource(args.source), args,
+    function (t) {
+      var html = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
+      return resolveAndInlineCss(html, args.basedir, args.css);
+    }
+  );
 }
 
 async function handlePugToPng(args) {
-  var source = args.source;
-  var filename = args.filename;
+  return await renderPngFromTasks(
+    expandSource(args.source), args,
+    function (t) {
+      var source = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
+      var filename = t.type === 'file' ? t.path : args.filename;
+      var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype, basedir: args.basedir });
+      var html = pug.compile(source, opts)(args.locals || {});
+      return resolveAndInlineCss(html, args.basedir, args.css);
+    }
+  );
+}
 
-  // Auto-detect: if source is an existing file path, read it
-  var resolved = path.resolve(source);
-  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
-    source = fs.readFileSync(resolved, 'utf8');
-    filename = filename || resolved;
-  }
+/**
+ * Shared PNG rendering pipeline: compile inputs to HTML, then render
+ * each to PNG via Playwright.  Handles single/multi output and base64.
+ */
+async function renderPngFromTasks(tasks, args, htmlFn) {
+  if (!args.output) throw new Error('"output" parameter is required');
 
-  // Compile Pug → HTML
-  var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype, basedir: args.basedir });
-  var fn = pug.compile(source, opts);
-  var html = fn(args.locals || {});
-
-  // Resolve CSS: inline <link> tags + inject extra css string
-  html = resolveAndInlineCss(html, args.basedir, args.css);
-
-  // Check browser availability — save intermediate HTML for inspection if unavailable
   var browserInfo = checkBrowserAvailable();
   if (!browserInfo.available) {
-    var tempHtmlFile = path.join(os.tmpdir(), 'pug-cli-intermediate-' + Date.now() + '.html');
-    fs.writeFileSync(tempHtmlFile, html, 'utf8');
-    throw new Error(
-      'No Chromium browser detected.\n' +
-      'Intermediate HTML saved to: ' + tempHtmlFile + '\n' +
-      'Install Chrome/Edge/Chromium or set CHROME_PATH.\n\n' +
-      '--- Intermediate HTML ---\n' + html
-    );
+    // Compile HTML for diagnostics
+    var htmlList = [];
+    for (var i = 0; i < tasks.length; i++) {
+      try { htmlList.push(htmlFn(tasks[i])); } catch (e) { htmlList.push('/* ERROR: ' + e.message + ' */'); }
+    }
+    var dump = htmlList.join('\n\n');
+    var tmpFile = path.join(os.tmpdir(), 'pug-cli-intermediate-' + Date.now() + '.html');
+    fs.writeFileSync(tmpFile, dump, 'utf8');
+    throw new Error('No Chromium browser detected.\nIntermediate HTML saved to: ' + tmpFile + '\n\n--- HTML ---\n' + dump);
   }
 
-  return await renderHtmlToImageResponse(html, args);
+  var results = [];
+  var errors = [];
+  var inlineSeq = 0;
+
+  for (var k = 0; k < tasks.length; k++) {
+    var t = tasks[k];
+    try {
+      var html = htmlFn(t);
+      var key = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
+      results.push({ key: key, content: html });
+    } catch (err) {
+      var errKey = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
+      errors.push({ input: errKey, error: err.message || String(err) });
+    }
+  }
+
+  if (results.length === 0 && errors.length > 0) {
+    return { content: [{ type: 'text', text: 'All tasks failed:\n' + JSON.stringify(errors, null, 2) }], isError: true };
+  }
+
+  var pngResults = [];
+  for (var ri = 0; ri < results.length; ri++) {
+    var r = results[ri];
+    try {
+      var pngPath;
+      if (results.length === 1) {
+        pngPath = path.resolve(args.output);
+      } else {
+        var stem = (r.key.indexOf('(inline:') === 0) ? 'output'
+          : path.basename(r.key, path.extname(r.key));
+        pngPath = path.join(path.resolve(args.output), stem + '.png');
+      }
+      fs.mkdirSync(path.dirname(pngPath), { recursive: true });
+
+      await htmlToPng(r.content, pngPath, {
+        width: args.width, height: args.height, scale: args.scale,
+        autoCrop: !!args.autoCrop, fullPage: args.fullPage, browserPath: args.browserPath,
+      });
+
+      pngResults.push({ input: r.key, output: pngPath });
+
+      if (args.returnBase64 && results.length === 1) {
+        var buf = await fs.promises.readFile(pngPath);
+        var b64 = buf.toString('base64');
+        return { content: [
+          { type: 'resource', resource: { text: b64, uri: 'data:image/png;base64,' + b64, mimeType: 'image/png' } },
+          { type: 'text', text: JSON.stringify({ written: pngPath }) },
+        ]};
+      }
+    } catch (err) {
+      errors.push({ input: r.key, error: err.message || String(err) });
+    }
+  }
+
+  var summary = { written: pngResults.length, failed: errors.length, files: pngResults };
+  if (errors.length) summary.renderErrors = errors;
+  return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
 }
 
 // ============================================================
@@ -462,7 +493,8 @@ function startMcpServer() {
         '- **pug_to_png**: Compile Pug → PNG one-step. `output` required. Set `returnBase64: true` for base64.',
         '',
         '### Conventions',
-        '- `output` vs `outDir`: `pug_to_html` uses `outDir` (directory for writing .html files); `html_to_png` / `pug_to_png` use `output` (single .png file path). Do NOT mix them up.',
+        '- All tools accept `source` as `string | string[]` with auto-detection: file path, glob, directory, or inline code.',
+        '- `output` auto-adapts: single input → treated as a file path; multiple inputs → treated as a directory.',
         '- `basedir` is the single root for **all** path resolution: Pug `include`/`extends` (both relative and absolute paths) + CSS `<link>` tags. Defaults to the input file\'s directory or cwd.',
         '- CSS: `<link>` tags auto-resolved relative to `basedir`. Prefer `css` param (inline string) — zero path dependency.',
         '- Config: `pug-cli.config.json` sets defaults for width/height/scale/fullPage.',
@@ -492,8 +524,7 @@ function startMcpServer() {
                 items: { type: 'string' },
                 description: 'Pug source code (inline), file path, glob, or directory. Pass an array for multiple inputs. Auto-detected.',
               },
-              outDir: { type: 'string', description: 'Output **directory** (e.g. "dist/", "output/"). Writes .html files next to source structure. Omit to return HTML inline.' },
-              output: { type: 'string', description: '(deprecated) Same as outDir. Prefer outDir for clarity.' },
+              output: { type: 'string', description: 'Output path. Single input → file path (e.g. "dist/page.html"). Multi input → directory (e.g. "dist/"). Omit to return HTML inline.' },
               pretty: { type: 'boolean', description: 'Pretty-print HTML output.' },
               locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },
               filename: { type: 'string', description: 'Virtual filename for error traces. Required for extends/include with inline source.' },
@@ -508,7 +539,12 @@ function startMcpServer() {
           inputSchema: {
             type: 'object',
             properties: {
-              source: { type: 'string', description: 'Pug template source code or file path.' },
+              source: {
+                type: ['string', 'array'],
+                items: { type: 'string' },
+                description: 'Pug source code (inline), file path, glob, or directory. Pass an array for multiple inputs. Auto-detected.',
+              },
+              output: { type: 'string', description: 'Output path. Single input → file path (e.g. "dist/template.js"). Multi input → directory. Omit to return JS inline.' },
               name: { type: 'string', default: 'template', description: 'JavaScript function name.' },
               module: { type: 'boolean', description: 'Wrap in CommonJS module.exports.' },
               filename: { type: 'string', description: 'Virtual filename for error traces.' },
@@ -523,7 +559,12 @@ function startMcpServer() {
           inputSchema: {
             type: 'object',
             properties: {
-              source: { type: 'string', description: 'HTML or XML source code, or a file path to read.' },
+              source: {
+                type: ['string', 'array'],
+                items: { type: 'string' },
+                description: 'HTML/XML source code, file path, glob, or directory. Pass an array for multiple inputs. Auto-detected.',
+              },
+              output: { type: 'string', description: 'Output path. Single input → file path (e.g. "dist/page.pug"). Multi input → directory. Omit to return Pug inline.' },
             },
             required: ['source'],
           },
@@ -534,7 +575,12 @@ function startMcpServer() {
           inputSchema: {
             type: 'object',
             properties: {
-              source: { type: 'string', description: 'HTML source code or a file path to read.' },
+              source: {
+                type: ['string', 'array'],
+                items: { type: 'string' },
+                description: 'HTML source code, file path, glob, or directory. Pass an array for multiple inputs. Auto-detected.',
+              },
+              output: { type: 'string', description: 'Output path. Single input → file path (e.g. "dist/chart.svg"). Multi input → directory. Omit to return SVG inline.' },
               width: { type: 'number', default: 800, description: 'Canvas width in pixels. Auto-detected from content.' },
               height: { type: 'number', default: 600, description: 'Canvas height in pixels. Auto-detected from content.' },
               fonts: { type: 'array', items: { type: 'string' }, description: 'Extra font paths (TTF/OTF/WOFF). Built-in: Inter + Noto Sans SC.' },
@@ -551,8 +597,12 @@ function startMcpServer() {
           inputSchema: {
             type: 'object',
             properties: {
-              source: { type: 'string', description: 'HTML source code or a file path to read.' },
-              output: { type: 'string', description: '**Required.** Output PNG file path, e.g. "dist/card.png" or "screenshot.png". Parent directories created automatically.' },
+              source: {
+                type: ['string', 'array'],
+                items: { type: 'string' },
+                description: 'HTML source code, file path, glob, or directory. Pass an array for multiple inputs. Auto-detected.',
+              },
+              output: { type: 'string', description: '**Required.** Single input → file path (e.g. "dist/card.png"). Multi input → directory (e.g. "dist/").' },
               width: { type: 'number', default: 800, description: 'Viewport width in pixels.' },
               height: { type: 'number', default: 600, description: 'Viewport height in pixels.' },
               scale: { type: 'number', default: 2, description: 'Device scale factor (Retina).' },
@@ -572,8 +622,12 @@ function startMcpServer() {
           inputSchema: {
             type: 'object',
             properties: {
-              source: { type: 'string', description: 'Pug template source code or a .pug file path to read.' },
-              output: { type: 'string', description: '**Required.** Output PNG file path, e.g. "dist/card.png" or "screenshot.png". Parent directories created automatically.' },
+              source: {
+                type: ['string', 'array'],
+                items: { type: 'string' },
+                description: 'Pug source code, .pug file path, glob, or directory. Pass an array for multiple inputs. Auto-detected.',
+              },
+              output: { type: 'string', description: '**Required.** Single input → file path (e.g. "dist/card.png"). Multi input → directory (e.g. "dist/").' },
               filename: { type: 'string', description: 'Virtual filename for error traces. Required for extends/include with inline source.' },
               pretty: { type: 'boolean', default: false, description: 'Pretty-print intermediate HTML.' },
               doctype: { type: 'string', description: 'Override doctype (html, xml, transitional, etc.).' },
