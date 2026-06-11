@@ -220,8 +220,10 @@ function handlePugToHtml(args) {
   }
 
   // --- Output: write to disk ---
-  if (args.output) {
-    var outDir = path.resolve(args.output);
+  // Prefer 'outDir' (semantically clear); fall back to 'output' for backward compat.
+  var outputDir = args.outDir || args.output;
+  if (outputDir) {
+    var outDir = path.resolve(outputDir);
     fs.mkdirSync(outDir, { recursive: true });
     var written = [];
     var writeErrors = [];
@@ -460,6 +462,7 @@ function startMcpServer() {
         '- **pug_to_png**: Compile Pug → PNG one-step. `output` required. Set `returnBase64: true` for base64.',
         '',
         '### Conventions',
+        '- `output` vs `outDir`: `pug_to_html` uses `outDir` (directory for writing .html files); `html_to_png` / `pug_to_png` use `output` (single .png file path). Do NOT mix them up.',
         '- `basedir` is the single root for **all** path resolution: Pug `include`/`extends` (both relative and absolute paths) + CSS `<link>` tags. Defaults to the input file\'s directory or cwd.',
         '- CSS: `<link>` tags auto-resolved relative to `basedir`. Prefer `css` param (inline string) — zero path dependency.',
         '- Config: `pug-cli.config.json` sets defaults for width/height/scale/fullPage.',
@@ -489,7 +492,8 @@ function startMcpServer() {
                 items: { type: 'string' },
                 description: 'Pug source code (inline), file path, glob, or directory. Pass an array for multiple inputs. Auto-detected.',
               },
-              output: { type: 'string', description: 'Directory to write compiled HTML files. Omit to return results inline.' },
+              outDir: { type: 'string', description: 'Output **directory** (e.g. "dist/", "output/"). Writes .html files next to source structure. Omit to return HTML inline.' },
+              output: { type: 'string', description: '(deprecated) Same as outDir. Prefer outDir for clarity.' },
               pretty: { type: 'boolean', description: 'Pretty-print HTML output.' },
               locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },
               filename: { type: 'string', description: 'Virtual filename for error traces. Required for extends/include with inline source.' },
@@ -548,7 +552,7 @@ function startMcpServer() {
             type: 'object',
             properties: {
               source: { type: 'string', description: 'HTML source code or a file path to read.' },
-              output: { type: 'string', description: '**Required.** File path to write the PNG (e.g. "output.png").' },
+              output: { type: 'string', description: '**Required.** Output PNG file path, e.g. "dist/card.png" or "screenshot.png". Parent directories created automatically.' },
               width: { type: 'number', default: 800, description: 'Viewport width in pixels.' },
               height: { type: 'number', default: 600, description: 'Viewport height in pixels.' },
               scale: { type: 'number', default: 2, description: 'Device scale factor (Retina).' },
@@ -569,7 +573,7 @@ function startMcpServer() {
             type: 'object',
             properties: {
               source: { type: 'string', description: 'Pug template source code or a .pug file path to read.' },
-              output: { type: 'string', description: '**Required.** File path to write the PNG (e.g. "output.png").' },
+              output: { type: 'string', description: '**Required.** Output PNG file path, e.g. "dist/card.png" or "screenshot.png". Parent directories created automatically.' },
               filename: { type: 'string', description: 'Virtual filename for error traces. Required for extends/include with inline source.' },
               pretty: { type: 'boolean', default: false, description: 'Pretty-print intermediate HTML.' },
               doctype: { type: 'string', description: 'Override doctype (html, xml, transitional, etc.).' },
