@@ -173,67 +173,7 @@ function writeResults(results, output, defaultExt) {
   return { written: written.length, files: written };
 }
 
-// ============================================================
-// CSS resolution helper
-// ============================================================
-
-var LINK_CSS_RE = /<link\b[^>]*\brel\s*=\s*["']stylesheet["'][^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>/gi;
-
-/**
- * Scan HTML for &lt;link rel="stylesheet" href="..."&gt; tags, resolve href relative
- * to basedir (or cwd), read the file, and inline as &lt;style&gt; tags.
- *
- * - Found files: &lt;link&gt; is replaced with &lt;style&gt;...&lt;/style&gt;
- * - Missing files: &lt;link&gt; is kept but marked with data-pug-cli-warn="not found"
- * - extraCss (if provided) is appended as a &lt;style&gt; block before &lt;/head&gt; or &lt;body&gt;
- *
- * @param {string} htmlString - Raw HTML source
- * @param {string} [basedir] - Base directory for resolving relative href paths
- * @param {string} [extraCss] - Additional CSS string to inject as a style tag
- * @returns {string} HTML with CSS inlined
- */
-function resolveAndInlineCss(htmlString, basedir, extraCss) {
-  var base = basedir || process.cwd();
-  var result = htmlString;
-  var injected = {};  // href → true, to avoid duplicate injection
-
-  // Phase 1: resolve <link> tags
-  result = result.replace(LINK_CSS_RE, function (match, href) {
-    // Skip absolute URLs (http://, https://, //)
-    if (/^(https?:\/\/|\/\/)/i.test(href)) return match;
-
-    if (injected[href]) return '';  // already inlined, remove duplicate
-
-    var resolved = path.resolve(base, href);
-    try {
-      if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
-        injected[href] = true;
-        var cssContent = fs.readFileSync(resolved, 'utf8');
-        return '<style>\n' + cssContent + '\n</style>';
-      }
-    } catch (_) { /* ignore read errors */ }
-
-    // File not found — keep the link but add a warning attribute for diagnostics
-    return match.replace(/\/?>$/, ' data-pug-cli-warn="not found: ' + href + '"$&');
-  });
-
-  // Phase 2: inject extraCss if provided
-  if (extraCss) {
-    var styleTag = '<style>\n' + extraCss + '\n</style>';
-    // Try to insert before </head>
-    if (/<\/head>/i.test(result)) {
-      result = result.replace(/<\/head>/i, styleTag + '\n</head>');
-    } else if (/<body[>\s]/i.test(result)) {
-      // Insert before <body> if no </head>
-      result = result.replace(/(<body[>\s])/i, styleTag + '\n$1');
-    } else {
-      // Fragment without head/body — prepend
-      result = styleTag + '\n' + result;
-    }
-  }
-
-  return result;
-}
+const { resolveAndInlineCss } = require('./css-inline');
 
 // ============================================================
 // Shared compile pipeline
@@ -366,7 +306,7 @@ async function handleHtmlToSvg(args) {
     htmlSource = resolveAndInlineCss(htmlSource, args.basedir, args.css);
     return await htmlToSvg(htmlSource, {
       width: args.width, height: args.height,
-      extraFonts: args.fonts || [], debug: !!args.debug,
+      extraFonts: args.fonts || [], debug: _serverDebugMode,
     });
   }, '.svg');
 }
@@ -455,13 +395,16 @@ async function renderPngFromTasks(tasks, args, htmlFn) {
 
       pngResults.push({ input: r.key, output: pngPath });
 
-      if (args.returnBase64 && results.length === 1) {
-        var buf = await fs.promises.readFile(pngPath);
-        var b64 = buf.toString('base64');
-        return { content: [
-          { type: 'resource', resource: { text: b64, uri: 'data:image/png;base64,' + b64, mimeType: 'image/png' } },
-          { type: 'text', text: JSON.stringify({ written: pngPath }) },
-        ]};
+      if (args.returnBase64) {
+        if (results.length === 1) {
+          var buf = await fs.promises.readFile(pngPath);
+          var b64 = buf.toString('base64');
+          return { content: [
+            { type: 'resource', resource: { text: b64, uri: 'data:image/png;base64,' + b64, mimeType: 'image/png' } },
+            { type: 'text', text: JSON.stringify({ written: pngPath }) },
+          ]};
+        }
+        // Multi-input: collect base64 entries, return at end
       }
     } catch (err) {
       errors.push({ input: r.key, error: err.message || String(err) });
@@ -470,6 +413,20 @@ async function renderPngFromTasks(tasks, args, htmlFn) {
 
   var summary = { written: pngResults.length, failed: errors.length, files: pngResults };
   if (errors.length) summary.renderErrors = errors;
+
+  // Multi-input returnBase64: collect all base64 entries
+  if (args.returnBase64 && pngResults.length > 1) {
+    var b64Dict = {};
+    for (var bi = 0; bi < pngResults.length; bi++) {
+      var p = pngResults[bi];
+      var bbuf = await fs.promises.readFile(p.output);
+      b64Dict[p.input] = bbuf.toString('base64');
+    }
+    return { content: [
+      { type: 'text', text: JSON.stringify({ written: pngResults.length, files: pngResults, base64: b64Dict }) },
+    ]};
+  }
+
   return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
 }
 
@@ -477,7 +434,12 @@ async function renderPngFromTasks(tasks, args, htmlFn) {
 // Server startup
 // ============================================================
 
-function startMcpServer() {
+var _serverDebugMode = false;
+
+function startMcpServer(serverOpts) {
+  serverOpts = serverOpts || {};
+  _serverDebugMode = !!serverOpts.debug;
+
   var server = new Server(
     { name: 'pug-mcp', version: '1.0.0' },
     {
@@ -527,8 +489,8 @@ function startMcpServer() {
               output: { type: 'string', description: 'Output path. Single input → file path (e.g. "dist/page.html"). Multi input → directory (e.g. "dist/"). Omit to return HTML inline.' },
               pretty: { type: 'boolean', description: 'Pretty-print HTML output.' },
               locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },
-              filename: { type: 'string', description: 'Virtual filename for error traces. Required for extends/include with inline source.' },
-              basedir: { type: 'string', description: 'Base directory for include/extends resolution. Defaults to file dir or cwd.' },
+              filename: { type: 'string', description: 'Virtual filename for error traces. Required for extends/include with inline source. Setting this also sets the default basedir to its dirname.' },
+              basedir: { type: 'string', description: 'Base directory for include/extends + CSS <link> resolution. Defaults to file dir, filename dir, or cwd.' },
             },
             required: ['source'],
           },
@@ -547,8 +509,8 @@ function startMcpServer() {
               output: { type: 'string', description: 'Output path. Single input → file path (e.g. "dist/template.js"). Multi input → directory. Omit to return JS inline.' },
               name: { type: 'string', default: 'template', description: 'JavaScript function name.' },
               module: { type: 'boolean', description: 'Wrap in CommonJS module.exports.' },
-              filename: { type: 'string', description: 'Virtual filename for error traces.' },
-              basedir: { type: 'string', description: 'Base directory for include/extends resolution. Defaults to file dir or cwd.' },
+              filename: { type: 'string', description: 'Virtual filename for error traces. Setting this also sets the default basedir to its dirname.' },
+              basedir: { type: 'string', description: 'Base directory for include/extends + CSS <link> resolution. Defaults to file dir, filename dir, or cwd.' },
             },
             required: ['source'],
           },
@@ -584,7 +546,6 @@ function startMcpServer() {
               width: { type: 'number', default: 800, description: 'Canvas width in pixels. Auto-detected from content.' },
               height: { type: 'number', default: 600, description: 'Canvas height in pixels. Auto-detected from content.' },
               fonts: { type: 'array', items: { type: 'string' }, description: 'Extra font paths (TTF/OTF/WOFF). Built-in: Inter + Noto Sans SC.' },
-              debug: { type: 'boolean', default: false, description: 'Draw bounding boxes for layout debugging.' },
               basedir: { type: 'string', description: 'Base directory for CSS <link> resolution. Defaults to cwd.' },
               css: { type: 'string', description: 'CSS string to inject as inline <style>. Preferred over <link> tags.' },
             },
@@ -628,7 +589,7 @@ function startMcpServer() {
                 description: 'Pug source code, .pug file path, glob, or directory. Pass an array for multiple inputs. Auto-detected.',
               },
               output: { type: 'string', description: '**Required.** Single input → file path (e.g. "dist/card.png"). Multi input → directory (e.g. "dist/").' },
-              filename: { type: 'string', description: 'Virtual filename for error traces. Required for extends/include with inline source.' },
+              filename: { type: 'string', description: 'Virtual filename for error traces. Required for extends/include with inline source. Setting this also sets the default basedir to its dirname.' },
               pretty: { type: 'boolean', default: false, description: 'Pretty-print intermediate HTML.' },
               doctype: { type: 'string', description: 'Override doctype (html, xml, transitional, etc.).' },
               locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },

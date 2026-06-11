@@ -166,10 +166,10 @@ function run() {
   var pugFiles = listInputFiles(['.pug']);
 
   test('Compile all .pug → HTML', function () {
+    var r = pugCli(['-o', htmlOut].concat(pugFiles));
+    if (!r.success) throw new Error(r.stderr);
     for (var i = 0; i < pugFiles.length; i++) {
       var f = pugFiles[i];
-      var r = pugCli(['-o', htmlOut, f]);
-      if (!r.success) throw new Error('Failed on ' + path.basename(f) + ': ' + r.stderr);
       var outFile = path.join(htmlOut, path.basename(f, '.pug') + '.html');
       assertFileNotEmpty(outFile, path.basename(f));
     }
@@ -177,20 +177,20 @@ function run() {
 
   test('Compile .pug → HTML with --pretty', function () {
     var out = prepareOutputDir('html-pretty');
-    var r = pugCli(['-o', out, '--pretty', path.join(INPUT_DIR, 'simple.pug')]);
-    if (!r.success) throw new Error(r.stderr);
     var outFile = path.join(out, 'simple.html');
+    var r = pugCli(['-o', outFile, '--pretty', path.join(INPUT_DIR, 'simple.pug')]);
+    if (!r.success) throw new Error(r.stderr);
     assertFileNotEmpty(outFile);
     // Pretty output should have multiple lines
     var content = fs.readFileSync(outFile, 'utf8');
     if (content.split('\n').length < 2) throw new Error('Pretty output should span multiple lines');
   });
 
-  test('Compile .pug → HTML with --obj (locals)', function () {
+  test('Compile .pug → HTML with --locals (locals)', function () {
     var out = prepareOutputDir('html-locals');
-    var r = pugCli(['-o', out, '-O', '{"title":"TestTitle"}', path.join(INPUT_DIR, 'simple.pug')]);
-    if (!r.success) throw new Error(r.stderr);
     var outFile = path.join(out, 'simple.html');
+    var r = pugCli(['-o', outFile, '--locals', '{"title":"TestTitle"}', path.join(INPUT_DIR, 'simple.pug')]);
+    if (!r.success) throw new Error(r.stderr);
     assertFileNotEmpty(outFile);
   });
 
@@ -202,27 +202,27 @@ function run() {
   var jsOut = prepareOutputDir('client-js');
 
   test('Compile .pug → client JS', function () {
-    var r = pugCli(['-o', jsOut, '--client', path.join(INPUT_DIR, 'simple.pug')]);
-    if (!r.success) throw new Error(r.stderr);
     var outFile = path.join(jsOut, 'simple.js');
+    var r = pugCli(['-o', outFile, '--client', path.join(INPUT_DIR, 'simple.pug')]);
+    if (!r.success) throw new Error(r.stderr);
     assertFileNotEmpty(outFile);
     assertContentContains(outFile, 'function template', 'template function');
   });
 
   test('Compile .pug → client JS with --module', function () {
     var out = prepareOutputDir('client-js-module');
-    var r = pugCli(['-o', out, '--client', '--module', path.join(INPUT_DIR, 'simple.pug')]);
-    if (!r.success) throw new Error(r.stderr);
     var outFile = path.join(out, 'simple.js');
+    var r = pugCli(['-o', outFile, '--client', '--module', path.join(INPUT_DIR, 'simple.pug')]);
+    if (!r.success) throw new Error(r.stderr);
     assertFileNotEmpty(outFile);
     assertContentContains(outFile, 'module.exports', 'module.exports');
   });
 
   test('Compile .pug → client JS with --name', function () {
     var out = prepareOutputDir('client-js-named');
-    var r = pugCli(['-o', out, '--client', '--name', 'myTemplate', path.join(INPUT_DIR, 'simple.pug')]);
-    if (!r.success) throw new Error(r.stderr);
     var outFile = path.join(out, 'simple.js');
+    var r = pugCli(['-o', outFile, '--client', '--name', 'myTemplate', path.join(INPUT_DIR, 'simple.pug')]);
+    if (!r.success) throw new Error(r.stderr);
     assertFileNotEmpty(outFile);
     assertContentContains(outFile, 'function myTemplate', 'custom name');
   });
@@ -237,20 +237,20 @@ function run() {
   var xmlFiles = listInputFiles(['.xml']);
 
   test('Convert all .html → .pug', function () {
+    var r = pugCli(['-R', '-o', pugOut].concat(htmlFiles));
+    if (!r.success) throw new Error(r.stderr);
     for (var i = 0; i < htmlFiles.length; i++) {
       var f = htmlFiles[i];
-      var r = pugCli(['-R', '-o', pugOut, f]);
-      if (!r.success) throw new Error('Failed on ' + path.basename(f) + ': ' + r.stderr);
       var outFile = path.join(pugOut, path.basename(f, '.html') + '.pug');
       assertFileNotEmpty(outFile, path.basename(f));
     }
   });
 
   test('Convert all .xml → .pug', function () {
+    var r = pugCli(['-R', '-o', pugOut].concat(xmlFiles));
+    if (!r.success) throw new Error(r.stderr);
     for (var j = 0; j < xmlFiles.length; j++) {
       var f = xmlFiles[j];
-      var r = pugCli(['-R', '-o', pugOut, f]);
-      if (!r.success) throw new Error('Failed on ' + path.basename(f) + ': ' + r.stderr);
       var outFile = path.join(pugOut, path.basename(f, '.xml') + '.pug');
       assertFileNotEmpty(outFile, path.basename(f));
     }
@@ -264,14 +264,16 @@ function run() {
   var svgOut = prepareOutputDir('svg');
 
   test('Convert all .pug → SVG', function () {
+    var toConvert = [];
     for (var i = 0; i < pugFiles.length; i++) {
-      var f = pugFiles[i];
-      if (SVG_SKIP_FILES.indexOf(path.basename(f)) !== -1) {
-        skipped++;
-        continue;
-      }
-      var r = pugCli(['-S', '-o', svgOut, f]);
-      if (!r.success) throw new Error('Failed on ' + path.basename(f) + ': ' + r.stderr);
+      if (SVG_SKIP_FILES.indexOf(path.basename(pugFiles[i])) === -1) toConvert.push(pugFiles[i]);
+      else skipped++;
+    }
+    if (toConvert.length === 0) { skipped++; return; }
+    var r = pugCli(['-S', '-o', svgOut].concat(toConvert));
+    if (!r.success) throw new Error(r.stderr);
+    for (var k = 0; k < toConvert.length; k++) {
+      var f = toConvert[k];
       var outFile = path.join(svgOut, path.basename(f, '.pug') + '.svg');
       assertFileNotEmpty(outFile, path.basename(f));
       assertContentContains(outFile, '<svg', 'SVG root element');
@@ -279,14 +281,16 @@ function run() {
   });
 
   test('Convert all .html → SVG', function () {
+    var toConvert = [];
     for (var j = 0; j < htmlFiles.length; j++) {
-      var f = htmlFiles[j];
-      if (SVG_SKIP_FILES.indexOf(path.basename(f)) !== -1) {
-        skipped++;
-        continue;
-      }
-      var r = pugCli(['-S', '-o', svgOut, f]);
-      if (!r.success) throw new Error('Failed on ' + path.basename(f) + ': ' + r.stderr);
+      if (SVG_SKIP_FILES.indexOf(path.basename(htmlFiles[j])) === -1) toConvert.push(htmlFiles[j]);
+      else skipped++;
+    }
+    if (toConvert.length === 0) { skipped++; return; }
+    var r = pugCli(['-S', '-o', svgOut].concat(toConvert));
+    if (!r.success) throw new Error(r.stderr);
+    for (var m = 0; m < toConvert.length; m++) {
+      var f = toConvert[m];
       var outFile = path.join(svgOut, path.basename(f, '.html') + '.svg');
       assertFileNotEmpty(outFile, path.basename(f));
       assertContentContains(outFile, '<svg', 'SVG root element');
@@ -295,9 +299,9 @@ function run() {
 
   test('SVG with custom --width/--height', function () {
     var out = prepareOutputDir('svg-sized');
-    var r = pugCli(['-S', '-o', out, '--width', '400', '--height', '300', path.join(INPUT_DIR, 'simple.pug')]);
-    if (!r.success) throw new Error(r.stderr);
     var outFile = path.join(out, 'simple.svg');
+    var r = pugCli(['-S', '-o', outFile, '--width', '400', '--height', '300', path.join(INPUT_DIR, 'simple.pug')]);
+    if (!r.success) throw new Error(r.stderr);
     assertFileNotEmpty(outFile);
     var content = fs.readFileSync(outFile, 'utf8');
     if (content.indexOf('width="400"') === -1) throw new Error('Missing width="400"');
@@ -310,7 +314,7 @@ function run() {
   console.log('--- Section 5: Pug/HTML → PNG ---');
 
   // Check browser availability first
-  var browserCheck = pugCli(['--to-png', '--force-png', '-o', OUTPUT_DIR, path.join(INPUT_DIR, 'simple.pug')]);
+  var browserCheck = pugCli(['--to-png', '--force-png', '-o', path.join(OUTPUT_DIR, '_browser_check_.png'), path.join(INPUT_DIR, 'simple.pug')]);
   var hasBrowser = browserCheck.success;
 
   if (!hasBrowser) {
@@ -320,7 +324,8 @@ function run() {
   var pngOut = prepareOutputDir('png');
 
   test('Convert .pug → PNG (or SVG fallback)', function () {
-    var r = pugCli(['-P', '-o', pngOut, path.join(INPUT_DIR, 'simple.pug')]);
+    var outFile = path.join(pngOut, 'simple.png');
+    var r = pugCli(['-P', '-o', outFile, path.join(INPUT_DIR, 'simple.pug')]);
     if (!r.success) throw new Error(r.stderr);
     // With SVG fallback, the output is actually .svg
     var svgFile = path.join(pngOut, 'simple.svg');
@@ -331,7 +336,8 @@ function run() {
   });
 
   test('Convert .html → PNG (or SVG fallback)', function () {
-    var r = pugCli(['-P', '-o', pngOut, path.join(INPUT_DIR, 'html-simple.html')]);
+    var outFile = path.join(pngOut, 'html-simple.png');
+    var r = pugCli(['-P', '-o', outFile, path.join(INPUT_DIR, 'html-simple.html')]);
     if (!r.success) throw new Error(r.stderr);
     var svgFile = path.join(pngOut, 'html-simple.svg');
     var pngFile = path.join(pngOut, 'html-simple.png');
@@ -342,7 +348,8 @@ function run() {
 
   if (hasBrowser) {
     test('PNG with --force-png', function () {
-      var r = pugCli(['-P', '--force-png', '-o', pngOut, '--scale', '1', path.join(INPUT_DIR, 'simple.pug')]);
+      var outFile = path.join(pngOut, 'simple-force.png');
+      var r = pugCli(['-P', '--force-png', '-o', outFile, '--scale', '1', path.join(INPUT_DIR, 'simple.pug')]);
       if (!r.success) throw new Error(r.stderr);
       var outFile = path.join(pngOut, 'simple.png');
       assertFileMinSize(outFile, 100, 'simple.png');
@@ -350,21 +357,24 @@ function run() {
 
     test('PNG with --auto-crop', function () {
       var out = prepareOutputDir('png-autocrop');
-      var r = pugCli(['-P', '--force-png', '--auto-crop', '-o', out, '--scale', '1', path.join(INPUT_DIR, 'simple.pug')]);
+      var outFile = path.join(out, 'simple.png');
+      var r = pugCli(['-P', '--force-png', '--auto-crop', '-o', outFile, '--scale', '1', path.join(INPUT_DIR, 'simple.pug')]);
       if (!r.success) throw new Error(r.stderr);
       assertFileMinSize(path.join(out, 'simple.png'), 100);
     });
 
     test('PNG with --full-page', function () {
       var out = prepareOutputDir('png-fullpage');
-      var r = pugCli(['-P', '--force-png', '--full-page', '-o', out, '--scale', '1', path.join(INPUT_DIR, 'simple.pug')]);
+      var outFile = path.join(out, 'simple.png');
+      var r = pugCli(['-P', '--force-png', '--full-page', '-o', outFile, '--scale', '1', path.join(INPUT_DIR, 'simple.pug')]);
       if (!r.success) throw new Error(r.stderr);
       assertFileMinSize(path.join(out, 'simple.png'), 100);
     });
 
     test('PNG with custom --scale', function () {
       var out = prepareOutputDir('png-scaled');
-      var r = pugCli(['-P', '--force-png', '--scale', '2', '-o', out, path.join(INPUT_DIR, 'simple.pug')]);
+      var outFile = path.join(out, 'simple.png');
+      var r = pugCli(['-P', '--force-png', '--scale', '2', '-o', outFile, path.join(INPUT_DIR, 'simple.pug')]);
       if (!r.success) throw new Error(r.stderr);
       // 2x scale should produce a larger file
       assertFileMinSize(path.join(out, 'simple.png'), 200);
@@ -402,17 +412,17 @@ function run() {
   });
 
   test('--width rejects non-numeric value', function () {
-    var r = pugCli(['-S', '--width', 'abc', '-o', OUTPUT_DIR, path.join(INPUT_DIR, 'simple.pug')]);
+    var r = pugCli(['-S', '--width', 'abc', '-o', path.join(OUTPUT_DIR, '_edge_width_.svg'), path.join(INPUT_DIR, 'simple.pug')]);
     if (r.success) throw new Error('Should have failed with non-numeric --width');
   });
 
   test('--height rejects zero', function () {
-    var r = pugCli(['-S', '--height', '0', '-o', OUTPUT_DIR, path.join(INPUT_DIR, 'simple.pug')]);
+    var r = pugCli(['-S', '--height', '0', '-o', path.join(OUTPUT_DIR, '_edge_height_.svg'), path.join(INPUT_DIR, 'simple.pug')]);
     if (r.success) throw new Error('Should have failed with zero --height');
   });
 
   test('--browser with nonexistent path', function () {
-    var r = pugCli(['-P', '--force-png', '--browser', path.join(OUTPUT_DIR, 'no-such-browser.exe'), '-o', OUTPUT_DIR, path.join(INPUT_DIR, 'simple.pug')]);
+    var r = pugCli(['-P', '--force-png', '--browser', path.join(OUTPUT_DIR, 'no-such-browser.exe'), '-o', path.join(OUTPUT_DIR, '_edge_browser_.png'), path.join(INPUT_DIR, 'simple.pug')]);
     // Should fail because --force-png + nonexistent browser
     if (r.success) throw new Error('Should have failed with nonexistent --browser path');
   });

@@ -7,6 +7,7 @@ const pug = require('pug');
 const markupToPug = require('./markup2pug');
 const { htmlToSvg } = require('./html2svg');
 const { htmlToPng, checkBrowserAvailable, CONFIG } = require('./html2png');
+const { resolveAndInlineCss } = require('./css-inline');
 const browserDetector = require('./browser-detector');
 
 // ============================================================
@@ -90,12 +91,22 @@ function compileToJS(filePath, opts) {
 
 /**
  * Write compilation output for a single file.
+ * Adaptive: single input → outDir is the file path; multi input → outDir is a directory.
+ * @param {object} opts - CLI options (needs .files and .outDir)
  * @param {string} ext - output extension override (e.g. '.pug' for reverse mode)
  */
-function writeOutput(filePath, content, outDir, isClient, ext) {
-  ext = ext || (isClient ? '.js' : '.html');
-  const basename = path.basename(filePath, path.extname(filePath)) + ext;
-  const outPath = path.join(outDir, basename);
+function writeOutput(filePath, content, opts, ext) {
+  ext = ext || (opts.client ? '.js' : '.html');
+  var outPath;
+  if (opts.files.length === 1) {
+    // Single file: -o is the output file path
+    outPath = path.resolve(opts.outDir);
+  } else {
+    // Multiple files: -o is a directory
+    const basename = path.basename(filePath, path.extname(filePath)) + ext;
+    outPath = path.join(path.resolve(opts.outDir), basename);
+  }
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, content, 'utf8');
   console.log('  wrote ' + outPath);
   return outPath;
@@ -118,7 +129,7 @@ function compileAndWrite(filePath, opts) {
     } else {
       content = compileToHTML(resolved, opts);
     }
-    writeOutput(resolved, content, opts.outDir, opts.client);
+    writeOutput(resolved, content, opts);
     return true;
   } catch (err) {
     console.error('Error compiling ' + filePath + ':', err.message || err);
@@ -153,7 +164,9 @@ async function toSvgAndWrite(filePath, opts) {
   }
 
   try {
-    const htmlSource = compilePugFileToHtml(filePath, opts);
+    var htmlSource = compilePugFileToHtml(filePath, opts);
+    // Resolve CSS <link> tags relative to basedir (aligns with MCP behaviour)
+    htmlSource = resolveAndInlineCss(htmlSource, opts.basedir, null);
     const svg = await htmlToSvg(htmlSource, {
       width: opts.svgWidth,
       height: opts.svgHeight,
@@ -161,7 +174,7 @@ async function toSvgAndWrite(filePath, opts) {
       debug: false,
     });
 
-    writeOutput(resolved, svg, opts.outDir, false, '.svg');
+    writeOutput(resolved, svg, opts, '.svg');
     return true;
   } catch (err) {
     console.error('Error converting to SVG ' + filePath + ':', err.message || err);
@@ -183,8 +196,15 @@ async function toPngAndWrite(filePath, opts) {
   }
 
   try {
-    const htmlSource = compilePugFileToHtml(filePath, opts);
-    const outPath = path.join(opts.outDir, path.basename(filePath, path.extname(filePath)) + '.png');
+    var htmlSource = compilePugFileToHtml(filePath, opts);
+    // Resolve CSS <link> tags relative to basedir (aligns with MCP behaviour)
+    htmlSource = resolveAndInlineCss(htmlSource, opts.basedir, null);
+    var outPath;
+    if (opts.files.length === 1) {
+      outPath = path.resolve(opts.outDir);
+    } else {
+      outPath = path.join(opts.outDir, path.basename(filePath, path.extname(filePath)) + '.png');
+    }
     await htmlToPng(htmlSource, outPath, {
       width: opts.pngWidth,
       height: opts.pngHeight,
@@ -215,7 +235,7 @@ function reverseAndWrite(filePath, opts) {
   try {
     const source = fs.readFileSync(resolved, 'utf8');
     const pugSource = markupToPug.markupToPug(source);
-    writeOutput(resolved, pugSource, opts.outDir, false, '.pug');
+    writeOutput(resolved, pugSource, opts, '.pug');
     return true;
   } catch (err) {
     console.error('Error converting ' + filePath + ':', err.message || err);
@@ -266,12 +286,7 @@ function compileStdin(opts) {
 // ============================================================
 
 function startWatch(files, opts) {
-  // Ensure output dir exists
-  if (!fs.existsSync(opts.outDir)) {
-    fs.mkdirSync(opts.outDir, { recursive: true });
-  }
-
-  // Initial compilation
+  // Initial compilation (writeOutput handles directory creation)
   console.log('Initial compilation:');
   files.forEach(function (f) { compileAndWrite(f, opts); });
 
@@ -324,13 +339,12 @@ var OPTIONS = [
   { group: 'Info', long: '--version',          short: '-V',  type: 'action', action: 'version',       desc: 'Display version information' },
   { group: 'Info', long: '--config-gen',                     type: 'action', action: 'configGen',     desc: 'Generate pug-cli.config.json template in current directory' },
   { group: 'Info', long: '--browser-detect',                 type: 'action', action: 'browserDetect', desc: 'Show browser detection diagnostics (all levels)' },
-  { group: 'Info', long: '--mcp-server',                     type: 'action', action: 'mcpServer',     desc: 'Start MCP (Model Context Protocol) server' },
 
   // -- Compilation ------------------------------------------------------------
-  { group: 'Compilation', long: '--out',       short: '-o',  type: 'path',   key: 'outDir',    desc: 'Output directory (default: current dir)' },
-  { group: 'Compilation', long: '--basedir',   short: '-b',  type: 'path',   key: 'basedir',   desc: 'Base directory for include/extends paths (default: dir of input file)' },
+  { group: 'Compilation', long: '--out',       short: '-o',  type: 'path',   key: 'outDir',    desc: 'Output path (single input: file path; multi input: directory). Default: current dir' },
+  { group: 'Compilation', long: '--basedir',   short: '-b',  type: 'path',   key: 'basedir',   desc: 'Base directory for include/extends + CSS <link> resolution (default: dir of input file)' },
   { group: 'Compilation', long: '--pretty',    short: '-p',  type: 'flag',   key: 'pretty',    desc: 'Pretty-print HTML output' },
-  { group: 'Compilation', long: '--obj',       short: '-O',  type: 'json',   key: 'locals',    desc: 'JSON string or JSON file with template variables' },
+  { group: 'Compilation', long: '--locals',    short: '-O',  type: 'json',   key: 'locals',    desc: 'JSON string or JSON file with template variables' },
   { group: 'Compilation', long: '--no-debug',  short: '-D',  type: 'flag',   key: 'compileDebug', desc: 'Disable compile debug info (default: on)', invert: true },
   { group: 'Compilation', long: '--doctype',   short: '-d',  type: 'str',    key: 'doctype',   desc: 'Override doctype (html, xml, transitional, etc.)' },
   { group: 'Compilation', long: '--global',    short: '-g',  type: 'list',   key: 'globals',   desc: 'Declare a global variable (repeatable)' },
@@ -346,6 +360,10 @@ var OPTIONS = [
   { group: 'Extensibility', long: '--filter', short: '-f',  type: 'filter', key: 'filters',   desc: 'Register a filter (e.g. md=jstransformer-markdown-it)' },
   { group: 'Extensibility', long: '--plugin',               type: 'plugin', key: 'plugins',   desc: 'Load a pug plugin module (repeatable)', multiple: true },
 
+  // -- MCP mode ---------------------------------------------------------------
+  { group: 'MCP', long: '--mcp-server',        type: 'flag',   key: 'mcpServer',  desc: 'Start MCP (Model Context Protocol) server' },
+  { group: 'MCP', long: '--debug',             type: 'flag',   key: 'debug',      desc: 'Enable debug mode (with --mcp-server: draw Satori layout bounding boxes)' },
+
   // -- I/O modes --------------------------------------------------------------
   { group: 'I/O modes', long: '--watch',     short: '-w',  type: 'flag',   key: 'watch',      desc: 'Watch files for changes' },
   { group: 'I/O modes', long: '--stdin',                   type: 'flag',   key: 'stdin',       desc: 'Read template from stdin' },
@@ -359,7 +377,7 @@ var OPTIONS = [
     set: function (opts, v) { opts.svgWidth = v; opts.pngWidth = v; } },
   { group: 'Image', long: '--height',        type: 'num',    key: 'svgHeight', desc: 'Canvas height in px (default: 600)',
     set: function (opts, v) { opts.svgHeight = v; opts.pngHeight = v; } },
-  { group: 'Image', long: '--font',          type: 'str',    key: 'fontPaths', desc: 'Load additional TTF/OTF/WOFF font (repeatable, SVG only)', multiple: true },
+  { group: 'Image', long: '--fonts',          type: 'str',    key: 'fontPaths', desc: 'Load additional TTF/OTF/WOFF fonts (repeatable, SVG only)', multiple: true },
 
   // -- PNG-specific -----------------------------------------------------------
   { group: 'PNG', long: '--browser',  short: '-B',  type: 'path',   key: 'browserPath', desc: 'Specify browser executable path' },
@@ -387,11 +405,11 @@ function renderHelp() {
   // Collect info actions separately
   var infoActions = [
     byName['--help'], byName['--version'],
-    byName['--config-gen'], byName['--browser-detect'], byName['--mcp-server'],
+    byName['--config-gen'], byName['--browser-detect'],
   ];
 
   // Group order
-  var groupOrder = ['Compilation', 'Client JS', 'Extensibility', 'I/O modes', 'Image', 'PNG'];
+  var groupOrder = ['Compilation', 'Client JS', 'Extensibility', 'MCP', 'I/O modes', 'Image', 'PNG'];
   var groups = {};
   for (var g = 0; g < groupOrder.length; g++) {
     groups[groupOrder[g]] = [];
@@ -412,6 +430,7 @@ function renderHelp() {
     'Compilation': 'Compilation options (all map to native pug APIs):',
     'Client JS': 'Client-side JS compilation:',
     'Extensibility': 'Extensibility:',
+    'MCP': 'MCP server mode:',
     'I/O modes': 'I/O modes:',
     'Image': 'Image output options (with --to-svg or --to-png):',
     'PNG': 'PNG options (with --to-png):',
@@ -485,7 +504,6 @@ function parseOption(args, startIdx, opts) {
       version:       function () { printVersion(); },
       configGen:     function () { generateConfigFile(); },
       browserDetect: function () { var diag = browserDetector.getDiagnostics(opts.browserPath, CONFIG.browser.searchPaths); console.log(JSON.stringify(diag, null, 2)); },
-      mcpServer:     function () { var m = require('./mcp-core'); m.startMcpServer(); },
     };
     if (actionMap[def.action]) actionMap[def.action]();
     return 0; // caller checks: if 0 and action, exit
@@ -606,6 +624,9 @@ function main() {
     toSvg: false,
     toPng: false,
     forcePng: false,
+    // MCP
+    mcpServer: false,
+    debug: false,
     // Image output
     svgWidth: undefined,
     svgHeight: undefined,
@@ -654,6 +675,23 @@ function main() {
     i += consumed - 1;  // -1 because the for loop will +1
   }
 
+  // Handle --debug without --mcp-server
+  if (opts.debug && !opts.mcpServer) {
+    console.error('Error: --debug requires --mcp-server');
+    process.exit(EXIT_FAILURE);
+  }
+
+  // Handle --mcp-server
+  if (opts.mcpServer) {
+    if (opts.files.length > 0) {
+      console.error('Error: --mcp-server does not accept input files');
+      process.exit(EXIT_FAILURE);
+    }
+    var m = require('./mcp-core');
+    m.startMcpServer({ debug: opts.debug });
+    return;
+  }
+
   // Handle --stdin
   if (opts.stdin) {
     if (opts.watch) {
@@ -678,7 +716,7 @@ function main() {
 
   // Handle SVG-only flags without --to-svg
   if (!opts.toSvg && (opts.fontPaths.length > 0)) {
-    console.error('Error: --font requires --to-svg');
+    console.error('Error: --fonts requires --to-svg');
     process.exit(EXIT_FAILURE);
   }
 
@@ -709,11 +747,6 @@ function main() {
     console.error('Error: no input files (use --stdin to read from stdin)');
     printUsage(true);
     process.exit(EXIT_FAILURE);
-  }
-
-  // Ensure output directory exists
-  if (!fs.existsSync(opts.outDir)) {
-    fs.mkdirSync(opts.outDir, { recursive: true });
   }
 
   // Handle --watch
