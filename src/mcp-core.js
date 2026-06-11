@@ -47,8 +47,9 @@ function buildPugOptions(opts) {
 }
 
 /** Check if a string contains glob wildcard characters */
+var GLOB_RE = /[*?]|\[[^\]"]*\]/;
 function hasGlob(str) {
-  return /[*?[\]]/.test(str);
+  return GLOB_RE.test(str);
 }
 
 /**
@@ -101,10 +102,22 @@ function expandInput(entry) {
 /**
  * Normalize `source` arg (string | string[]) into a flat task list.
  * All tools use this for unified auto-detect: file / glob / dir / inline.
+ *
+ * MCP frameworks may occasionally serialize an array argument as its JSON
+ * string representation (e.g. `'["a.pug","b.pug"]'`) instead of a native
+ * array.  Detect this and recover automatically.
+ *
  * @param {string|string[]} source
  * @returns {{ type:'file', path:string } | { type:'inline', source:string }}[]
  */
 function expandSource(source) {
+  // Auto-recover JSON-serialized array strings (MCP framework edge case)
+  if (typeof source === 'string' && source.charCodeAt(0) === 91 /* [ */) {
+    try {
+      var parsed = JSON.parse(source);
+      if (Array.isArray(parsed) && parsed.length > 0) source = parsed;
+    } catch (_) { /* not valid JSON — keep original string */ }
+  }
   var raw = Array.isArray(source) ? source : [source];
   var seen = {};
   var tasks = [];
