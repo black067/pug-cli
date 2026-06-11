@@ -270,11 +270,15 @@ function run() {
       else skipped++;
     }
     if (toConvert.length === 0) { skipped++; return; }
-    var r = pugCli(['-S', '-o', svgOut].concat(toConvert));
+    // Adaptive -o: single file needs explicit output path; multi file uses directory
+    var outArg = toConvert.length === 1
+      ? path.join(svgOut, path.basename(toConvert[0], path.extname(toConvert[0])) + '.svg')
+      : svgOut;
+    var r = pugCli(['-S', '-o', outArg].concat(toConvert));
     if (!r.success) throw new Error(r.stderr);
     for (var k = 0; k < toConvert.length; k++) {
       var f = toConvert[k];
-      var outFile = path.join(svgOut, path.basename(f, '.pug') + '.svg');
+      var outFile = path.join(svgOut, path.basename(f, path.extname(f)) + '.svg');
       assertFileNotEmpty(outFile, path.basename(f));
       assertContentContains(outFile, '<svg', 'SVG root element');
     }
@@ -287,11 +291,15 @@ function run() {
       else skipped++;
     }
     if (toConvert.length === 0) { skipped++; return; }
-    var r = pugCli(['-S', '-o', svgOut].concat(toConvert));
+    // Adaptive -o: single file needs explicit output path; multi file uses directory
+    var outArg = toConvert.length === 1
+      ? path.join(svgOut, path.basename(toConvert[0], path.extname(toConvert[0])) + '.svg')
+      : svgOut;
+    var r = pugCli(['-S', '-o', outArg].concat(toConvert));
     if (!r.success) throw new Error(r.stderr);
     for (var m = 0; m < toConvert.length; m++) {
       var f = toConvert[m];
-      var outFile = path.join(svgOut, path.basename(f, '.html') + '.svg');
+      var outFile = path.join(svgOut, path.basename(f, path.extname(f)) + '.svg');
       assertFileNotEmpty(outFile, path.basename(f));
       assertContentContains(outFile, '<svg', 'SVG root element');
     }
