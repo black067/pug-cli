@@ -83,15 +83,27 @@ function resolveAndInlineCss(htmlString, basedir, extraCss) {
 }
 
 function buildPugOptions(opts) {
-  var basedir = opts.basedir
-    ? opts.basedir
-    : (opts.filename ? path.dirname(opts.filename) : process.cwd());
+  var filename = opts.filename || 'input.pug';
+  var basedir = opts.basedir || (opts.filename ? path.dirname(opts.filename) : process.cwd());
+
   return {
-    filename: opts.filename || 'input.pug',
+    filename: filename,
     basedir: basedir,
     pretty: !!opts.pretty,
     compileDebug: false,
     doctype: opts.doctype || undefined,
+    // Custom resolve: all include/extends paths resolve from basedir.
+    // Pug's default only uses basedir for absolute paths (starting with /);
+    // we extend it so that relative paths also resolve from basedir,
+    // making basedir the single root for all path resolution.
+    resolve: function (includePath, source, options) {
+      includePath = includePath.trim();
+      if (includePath[0] === '/' && !options.basedir)
+        throw new Error('the "basedir" option is required to use includes and extends with "absolute" paths');
+      if (includePath[0] !== '/' && !source && !options.basedir)
+        throw new Error('the "filename" option is required to use includes and extends with "relative" paths');
+      return path.resolve(options.basedir, includePath);
+    },
   };
 }
 
@@ -213,6 +225,31 @@ test('buildPugOptions — basedir from filename', function () {
 test('buildPugOptions — basedir from cwd', function () {
   var opts = buildPugOptions({});
   if (opts.basedir !== process.cwd()) throw new Error('expected basedir from cwd');
+});
+
+// Test 11: custom resolve — relative include resolves from basedir
+test('buildPugOptions — resolve relative from basedir', function () {
+  var opts = buildPugOptions({ filename: '/project/src/page.pug', basedir: '/shared/partials' });
+  var resolved = opts.resolve('header.pug', '/project/src/page.pug', opts);
+  if (resolved !== path.resolve('/shared/partials', 'header.pug'))
+    throw new Error('expected relative include to resolve from basedir, got ' + resolved);
+});
+
+// Test 12: custom resolve — absolute include resolves from basedir
+test('buildPugOptions — resolve absolute from basedir', function () {
+  var opts = buildPugOptions({ filename: '/project/src/page.pug', basedir: '/shared/partials' });
+  var resolved = opts.resolve('/components/nav.pug', '/project/src/page.pug', opts);
+  if (resolved !== path.resolve('/shared/partials', '/components/nav.pug'))
+    throw new Error('expected absolute include to resolve from basedir, got ' + resolved);
+});
+
+// Test 13: custom resolve — defaults work (basedir = file dir)
+test('buildPugOptions — resolve default (no explicit basedir)', function () {
+  var opts = buildPugOptions({ filename: '/project/src/page.pug' });
+  var resolved = opts.resolve('header.pug', '/project/src/page.pug', opts);
+  // Default basedir = dirname(filename) = /project/src
+  if (resolved !== path.resolve('/project/src', 'header.pug'))
+    throw new Error('expected default resolve from file dir, got ' + resolved);
 });
 
 // ============================================================

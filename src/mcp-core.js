@@ -19,12 +19,27 @@ const {
 // ============================================================
 
 function buildPugOptions(opts) {
+  var filename = opts.filename || 'input.pug';
+  var basedir = opts.basedir || (opts.filename ? path.dirname(opts.filename) : process.cwd());
+
   return {
-    filename: opts.filename || 'input.pug',
-    basedir: opts.filename ? path.dirname(opts.filename) : process.cwd(),
+    filename: filename,
+    basedir: basedir,
     pretty: !!opts.pretty,
     compileDebug: false,
     doctype: opts.doctype || undefined,
+    // Custom resolve: all include/extends paths resolve from basedir.
+    // Pug's default only uses basedir for absolute paths (starting with /);
+    // we extend it so that relative paths also resolve from basedir,
+    // making basedir the single root for all path resolution.
+    resolve: function (includePath, source, options) {
+      includePath = includePath.trim();
+      if (includePath[0] === '/' && !options.basedir)
+        throw new Error('the "basedir" option is required to use includes and extends with "absolute" paths');
+      if (includePath[0] !== '/' && !source && !options.basedir)
+        throw new Error('the "filename" option is required to use includes and extends with "relative" paths');
+      return path.resolve(options.basedir, includePath);
+    },
   };
 }
 
@@ -442,7 +457,7 @@ function startMcpServer() {
         '- **pug_to_png**: Compile Pug → PNG one-step. `output` required. Set `returnBase64: true` for base64.',
         '',
         '### Conventions',
-        '- `basedir` is the root for all path resolution: include/extends + CSS `<link>`. Defaults to file dir or cwd.',
+        '- `basedir` is the single root for **all** path resolution: Pug `include`/`extends` (both relative and absolute paths) + CSS `<link>` tags. Defaults to the input file\'s directory or cwd.',
         '- CSS: `<link>` tags auto-resolved relative to `basedir`. Prefer `css` param (inline string) — zero path dependency.',
         '- Config: `pug-cli.config.json` sets defaults for width/height/scale/fullPage.',
         '- `fullPage` defaults to `true` (capture natural content height). Set to `false` for viewport-only.',

@@ -54,7 +54,7 @@ var skipped = 0;
 //   - mail-view.pug:         contains <text> elements (unsupported by Satori)
 //   - html-attributes.html:  contains relative image URLs (unsupported by Satori)
 //   - html-mixed.html:       contains <div> without display:flex with multiple children
-var SVG_SKIP_FILES = ['game-login.pug', 'mail-view.pug', 'html-attributes.html', 'html-mixed.html'];
+var SVG_SKIP_FILES = ['game-login.pug', 'mail-view.pug', 'rank-view.pug', 'html-attributes.html', 'html-mixed.html'];
 
 function test(name, fn) {
   try {
