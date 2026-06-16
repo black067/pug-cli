@@ -41,3 +41,16 @@ node dist/pug-cli-bundled.js --mcp-server
 | `defaults.width / height / scale / fullPage` | PNG/SVG 默认参数 |
 | `browser.searchPaths / launchArgs` | 浏览器搜索路径和启动参数 |
 | `png.wrapperCss` | HTML 片段包装样式 |
+
+## 调试
+
+`--debug` 必须与 `--mcp-server` 配合使用。开启后：
+
+- 所有工具调用时在 stderr 输出详细调试日志（工具名、输入源、编译进度、耗时等）
+- 工具执行出错时在 stderr 输出完整 JavaScript 调用栈
+- SVG 渲染（`html_to_svg`）额外绘制 Satori 布局边界框
+- PNG 渲染输出浏览器检测状态和截图路径
+
+```bash
+node src/cli.js --mcp-server --debug
+```

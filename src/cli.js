@@ -362,7 +362,7 @@ var OPTIONS = [
 
   // -- MCP mode ---------------------------------------------------------------
   { group: 'MCP', long: '--mcp-server',        type: 'flag',   key: 'mcpServer',  desc: 'Start MCP (Model Context Protocol) server' },
-  { group: 'MCP', long: '--debug',             type: 'flag',   key: 'debug',      desc: 'Enable debug mode (with --mcp-server: draw Satori layout bounding boxes)' },
+  { group: 'MCP', long: '--debug',             type: 'flag',   key: 'debug',      desc: 'Enable debug mode (with --mcp-server: stderr debug logs, Satori layout bounding boxes, error stack traces)' },
 
   // -- I/O modes --------------------------------------------------------------
   { group: 'I/O modes', long: '--watch',     short: '-w',  type: 'flag',   key: 'watch',      desc: 'Watch files for changes' },

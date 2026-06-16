@@ -207,16 +207,21 @@ function processTasks(tasks, args, compileFn, defaultExt) {
   var results = [];
   var errors = [];
   var inlineSeq = 0;
+  debugLog('Processing', tasks.length, 'task(s)...');
 
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
+    var label = t.type === 'file' ? t.path : '(inline)';
+    debugLog('Compiling:', label);
     try {
       var content = compileFn(t, args);
       var key = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
       results.push({ key: key, content: content });
+      debugLog('OK:', typeof content === 'string' ? content.length + ' bytes' : 'done');
     } catch (err) {
       var errKey = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
       errors.push({ input: errKey, error: err.message || String(err) });
+      debugLog('FAIL:', err.message || String(err));
     }
   }
 
@@ -247,16 +252,21 @@ async function processTasksAsync(tasks, args, compileFn, defaultExt) {
   var results = [];
   var errors = [];
   var inlineSeq = 0;
+  debugLog('Processing', tasks.length, 'task(s)...');
 
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
+    var label = t.type === 'file' ? t.path : '(inline)';
+    debugLog('Compiling:', label);
     try {
       var content = await compileFn(t, args);
       var key = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
       results.push({ key: key, content: content });
+      debugLog('OK:', typeof content === 'string' ? content.length + ' bytes' : 'done');
     } catch (err) {
       var errKey = t.type === 'file' ? t.path : '(inline:' + (inlineSeq++) + ')';
       errors.push({ input: errKey, error: err.message || String(err) });
+      debugLog('FAIL:', err.message || String(err));
     }
   }
 
@@ -287,6 +297,7 @@ async function processTasksAsync(tasks, args, compileFn, defaultExt) {
 // ============================================================
 
 function handlePugToHtml(args) {
+  debugLog('Tool: pug_to_html, source:', args.source);
   return processTasks(expandSource(args.source), args, function (t) {
     var source = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
     var filename = t.type === 'file' ? t.path : args.filename;
@@ -296,6 +307,7 @@ function handlePugToHtml(args) {
 }
 
 function handlePugToJs(args) {
+  debugLog('Tool: pug_to_js, source:', args.source);
   return processTasks(expandSource(args.source), args, function (t) {
     var source = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
     var filename = t.type === 'file' ? t.path : args.filename;
@@ -307,6 +319,7 @@ function handlePugToJs(args) {
 }
 
 function handleHtmlToPug(args) {
+  debugLog('Tool: html_to_pug, source:', args.source);
   return processTasks(expandSource(args.source), args, function (t) {
     var source = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
     return markupToPug.markupToPug(source);
@@ -314,9 +327,11 @@ function handleHtmlToPug(args) {
 }
 
 async function handleHtmlToSvg(args) {
+  debugLog('Tool: html_to_svg, source:', args.source);
   return await processTasksAsync(expandSource(args.source), args, async function (t) {
     var htmlSource = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
     htmlSource = resolveAndInlineCss(htmlSource, args.basedir, args.css);
+    debugLog('Rendering SVG, dimensions:', args.width, 'x', args.height, 'fonts:', (args.fonts || []).length);
     return await htmlToSvg(htmlSource, {
       width: args.width, height: args.height,
       extraFonts: args.fonts || [], debug: _serverDebugMode,
@@ -325,6 +340,7 @@ async function handleHtmlToSvg(args) {
 }
 
 async function handleHtmlToPng(args) {
+  debugLog('Tool: html_to_png, source:', args.source);
   return await renderPngFromTasks(
     expandSource(args.source), args,
     function (t) {
@@ -335,6 +351,7 @@ async function handleHtmlToPng(args) {
 }
 
 async function handlePugToPng(args) {
+  debugLog('Tool: pug_to_png, source:', args.source);
   return await renderPngFromTasks(
     expandSource(args.source), args,
     function (t) {
@@ -355,6 +372,7 @@ async function renderPngFromTasks(tasks, args, htmlFn) {
   if (!args.output) throw new Error('"output" parameter is required');
 
   var browserInfo = checkBrowserAvailable();
+  debugLog('Browser check:', browserInfo.available ? 'available' : 'not found');
   if (!browserInfo.available) {
     // Compile HTML for diagnostics
     var htmlList = [];
@@ -390,6 +408,7 @@ async function renderPngFromTasks(tasks, args, htmlFn) {
   var pngResults = [];
   for (var ri = 0; ri < results.length; ri++) {
     var r = results[ri];
+    debugLog('Rendering PNG:', r.key);
     try {
       var pngPath;
       if (results.length === 1) {
@@ -400,6 +419,7 @@ async function renderPngFromTasks(tasks, args, htmlFn) {
         pngPath = path.join(path.resolve(args.output), stem + '.png');
       }
       fs.mkdirSync(path.dirname(pngPath), { recursive: true });
+      debugLog('PNG output path:', pngPath);
 
       await htmlToPng(r.content, pngPath, {
         width: args.width, height: args.height, scale: args.scale,
@@ -448,6 +468,14 @@ async function renderPngFromTasks(tasks, args, htmlFn) {
 // ============================================================
 
 var _serverDebugMode = false;
+
+function debugLog() {
+  if (_serverDebugMode) {
+    var args = Array.prototype.slice.call(arguments);
+    args.unshift('[DEBUG]');
+    console.error.apply(console, args);
+  }
+}
 
 function startMcpServer(serverOpts) {
   serverOpts = serverOpts || {};
@@ -644,6 +672,11 @@ function startMcpServer(serverOpts) {
           throw new Error('Unknown tool: ' + name);
       }
     } catch (err) {
+      debugLog('Tool error in:', name, '-', err.message);
+      if (_serverDebugMode && err.stack) {
+        debugLog('Stack trace:');
+        console.error(err.stack);
+      }
       return {
         content: [{ type: 'text', text: 'Error: ' + (err.message || err) }],
         isError: true,
