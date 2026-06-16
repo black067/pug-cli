@@ -17,6 +17,12 @@ var tests = [
 var passed = 0;
 var failed = 0;
 
+// Ensure output directory exists for snapshots
+var outputDir = path.join(__dirname, 'output');
+if (!fs.existsSync(outputDir)) {
+  fs.mkdirSync(outputDir, { recursive: true });
+}
+
 function normalizeDOM(doc) {
   function walk(node) {
     var result = [];
@@ -40,6 +46,14 @@ tests.forEach(function (test) {
   var snapshotPath = path.join(__dirname, 'output', test.name + '.pug');
 
   var source = fs.readFileSync(inputPath, 'utf8');
+
+  // Auto-generate snapshot if missing
+  if (!fs.existsSync(snapshotPath)) {
+    var genPug = markupToPug.markupToPug(source);
+    fs.writeFileSync(snapshotPath, genPug, 'utf8');
+    console.log('GEN snapshot: ' + test.name);
+  }
+
   var expectedPug = fs.readFileSync(snapshotPath, 'utf8');
 
   // === Snapshot test ===
