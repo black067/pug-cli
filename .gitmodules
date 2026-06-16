@@ -1,4 +1,0 @@
-[submodule "pug"]
-	path = submodules/pug
-	url = https://github.com/pugjs/pug.git
-
