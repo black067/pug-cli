@@ -36,13 +36,21 @@ function buildPugOptions(opts) {
     },
   };
 
+  // Merge user-provided plugins with the basedir resolve plugin
+  var plugins = [basedirResolvePlugin];
+  if (opts.plugins && opts.plugins.length > 0) {
+    plugins = plugins.concat(opts.plugins);
+  }
+
   return {
     filename: filename,
     basedir: basedir,
     pretty: !!opts.pretty,
     compileDebug: false,
     doctype: opts.doctype || undefined,
-    plugins: [basedirResolvePlugin],
+    globals: opts.globals && opts.globals.length > 0 ? opts.globals : undefined,
+    filters: opts.filters && Object.keys(opts.filters).length > 0 ? opts.filters : undefined,
+    plugins: plugins,
   };
 }
 
@@ -293,6 +301,36 @@ async function processTasksAsync(tasks, args, compileFn, defaultExt) {
 }
 
 // ============================================================
+// Internal helpers for MCP tool handlers
+// ============================================================
+
+/**
+ * Parse args.filters array (["name=module"]) into a filters object.
+ * Returns undefined when no filters are provided.
+ */
+function resolveFilters(args) {
+  if (!args.filters) return undefined;
+  var filters = {};
+  for (var fi = 0; fi < args.filters.length; fi++) {
+    var sep = args.filters[fi].indexOf('=');
+    if (sep === -1) throw new Error('filter requires name=module format, got: ' + args.filters[fi]);
+    var fname = args.filters[fi].slice(0, sep);
+    var fmod = args.filters[fi].slice(sep + 1);
+    filters[fname] = require(path.resolve(fmod));
+  }
+  return filters;
+}
+
+/**
+ * Resolve args.plugins array into loaded plugin modules.
+ * Returns undefined when no plugins are provided.
+ */
+function resolvePlugins(args) {
+  if (!args.plugins) return undefined;
+  return args.plugins.map(function (p) { return require(path.resolve(p)); });
+}
+
+// ============================================================
 // Tool handlers
 // ============================================================
 
@@ -301,7 +339,12 @@ function handlePugToHtml(args) {
   return processTasks(expandSource(args.source), args, function (t) {
     var source = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
     var filename = t.type === 'file' ? t.path : args.filename;
-    var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype, basedir: args.basedir });
+    var pugOpts = {
+      filename: filename, pretty: args.pretty, doctype: args.doctype, basedir: args.basedir,
+      filters: resolveFilters(args),
+      plugins: resolvePlugins(args),
+    };
+    var opts = buildPugOptions(pugOpts);
     return pug.compile(source, opts)(args.locals || {});
   }, '.html');
 }
@@ -311,7 +354,12 @@ function handlePugToJs(args) {
   return processTasks(expandSource(args.source), args, function (t) {
     var source = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
     var filename = t.type === 'file' ? t.path : args.filename;
-    var opts = buildPugOptions({ filename: filename, basedir: args.basedir });
+    var pugOpts = {
+      filename: filename, basedir: args.basedir,
+      filters: resolveFilters(args),
+      plugins: resolvePlugins(args),
+    };
+    var opts = buildPugOptions(pugOpts);
     opts.module = !!args.module;
     if (args.name) opts.name = args.name;
     return pug.compileClient(source, opts);
@@ -357,7 +405,12 @@ async function handlePugToPng(args) {
     function (t) {
       var source = t.type === 'file' ? fs.readFileSync(t.path, 'utf8') : t.source;
       var filename = t.type === 'file' ? t.path : args.filename;
-      var opts = buildPugOptions({ filename: filename, pretty: args.pretty, doctype: args.doctype, basedir: args.basedir });
+      var pugOpts = {
+        filename: filename, pretty: args.pretty, doctype: args.doctype, basedir: args.basedir,
+        filters: resolveFilters(args),
+        plugins: resolvePlugins(args),
+      };
+      var opts = buildPugOptions(pugOpts);
       var html = pug.compile(source, opts)(args.locals || {});
       return resolveAndInlineCss(html, args.basedir, args.css);
     }
@@ -532,6 +585,9 @@ function startMcpServer(serverOpts) {
               locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },
               filename: { type: 'string', description: 'Virtual filename for error traces. Required for extends/include with inline source. Setting this also sets the default basedir to its dirname.' },
               basedir: { type: 'string', description: 'Base directory for include/extends + CSS <link> resolution. Defaults to file dir, filename dir, or cwd.' },
+              filters: { type: 'array', items: { type: 'string' }, description: 'Register filters (e.g. ["md=jstransformer-markdown-it"]).' },
+              plugins: { type: 'array', items: { type: 'string' }, description: 'Load pug plugin modules (e.g. ["/path/to/plugin"]).' },
+              globals: { type: 'array', items: { type: 'string' }, description: 'Declare global variables for the template.' },
             },
             required: ['source'],
           },
@@ -552,6 +608,9 @@ function startMcpServer(serverOpts) {
               module: { type: 'boolean', description: 'Wrap in CommonJS module.exports.' },
               filename: { type: 'string', description: 'Virtual filename for error traces. Setting this also sets the default basedir to its dirname.' },
               basedir: { type: 'string', description: 'Base directory for include/extends + CSS <link> resolution. Defaults to file dir, filename dir, or cwd.' },
+              filters: { type: 'array', items: { type: 'string' }, description: 'Register filters (e.g. ["md=jstransformer-markdown-it"]).' },
+              plugins: { type: 'array', items: { type: 'string' }, description: 'Load pug plugin modules (e.g. ["/path/to/plugin"]).' },
+              globals: { type: 'array', items: { type: 'string' }, description: 'Declare global variables for the template.' },
             },
             required: ['source'],
           },
@@ -636,6 +695,9 @@ function startMcpServer(serverOpts) {
               locals: { type: 'object', description: 'Template variables as a JSON object, e.g. {"title": "Hello"}.' },
               basedir: { type: 'string', description: 'Base directory for include/extends + CSS <link> resolution. Defaults to file dir or cwd.' },
               css: { type: 'string', description: 'CSS string to inject as inline <style>. Preferred over <link> tags.' },
+              filters: { type: 'array', items: { type: 'string' }, description: 'Register filters (e.g. ["md=jstransformer-markdown-it"]).' },
+              plugins: { type: 'array', items: { type: 'string' }, description: 'Load pug plugin modules (e.g. ["/path/to/plugin"]).' },
+              globals: { type: 'array', items: { type: 'string' }, description: 'Declare global variables for the template.' },
               width: { type: 'number', default: 800, description: 'Viewport width in pixels.' },
               height: { type: 'number', default: 600, description: 'Viewport height in pixels.' },
               scale: { type: 'number', default: 2, description: 'Device scale factor (Retina).' },

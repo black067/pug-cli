@@ -1,6 +1,11 @@
 # pug-cli CLI 使用手册
 
-`pug-cli` 是一个命令行工具，提供 Pug 模板编译、HTML/XML 反向转换、SVG/PNG 图像渲染等能力。
+`pug-cli` 支持 Pug 模板编译、HTML/XML 反向转换、SVG/PNG 图像渲染。
+
+> **提示**：本文档聚焦**使用场景与最佳实践**。完整的选项列表（参数名、类型、默认值）请直接运行 `pug-cli --help`。  
+> MCP Server 模式参见 [MCP 使用手册](mcp-manual.md)。
+
+---
 
 ## 基本语法
 
@@ -8,222 +13,162 @@
 pug-cli [options] <file.pug ...>
 ```
 
-或使用 Node.js 直接运行源码：
-
-```bash
-node src/cli.js [options] <file.pug ...>
-```
-
-> **提示**：本文档仅覆盖 CLI 模式。MCP Server 模式参见 [MCP 使用手册](mcp-manual.md)。
-
 ---
 
-## 信息类选项
+## 使用场景
 
-| 选项 | 行为 |
-|------|------|
-| `-h, --help` | 打印帮助信息并退出 |
-| `-V, --version` | 打印版本信息（包含 pug-cli 版本和底层 pug 版本） |
-| `--licence` | 打印 MIT 许可证全文 |
-| `--config-gen` | 在当前目录生成 `pug-cli.config.json` 配置模板。若文件已存在则报错退出 |
-| `--mcp-server` | 启动 MCP 服务器模式（stdio 传输），供 AI 编程助手调用 |
-
----
-
-## I/O 模式
-
-### 普通编译（默认）
+### 场景 1：编译 Pug 为 HTML
 
 ```bash
-pug-cli file1.pug file2.pug -o output/
+# 基本编译
+pug-cli src/index.pug -o dist/
+
+# 传模板变量（自动识别：文件路径 vs JSON 字面量）
+pug-cli src/index.pug -o dist/ -O '{"title":"Hello"}'
+pug-cli src/index.pug -o dist/ -O data.json
+
+# 美化输出
+pug-cli src/index.pug -o dist/ --pretty
+
+# 批量编译
+pug-cli src/page1.pug src/page2.pug -o dist/
 ```
 
-将 `.pug` 文件编译为 HTML，写入 `-o` 指定的输出目录。输出文件名为 `<原名>.html`。
+**注意**：
+- `-o` 在单文件时作为输出**文件路径**；多文件时作为输出**目录**，文件名自动取 `<原名>.html`。
+- `--basedir` 控制 `include`/`extends` 路径解析根目录（默认：文件所在目录）。
 
-- 支持一次传入多个文件。
-- 如果输出目录不存在，会自动创建。
-
-### 反向转换 `-R, --reverse`
+### 场景 2：编译为客户端 JS 函数
 
 ```bash
-pug-cli page.html -o output/ --reverse
+# 编译为独立 JS 函数
+pug-cli src/template.pug -o dist/ --client
+
+# 包一层 module.exports，指定函数名
+pug-cli src/template.pug -o dist/ --client --module --name renderCard
 ```
 
-将 HTML 或 XML 文件转换为 Pug 语法。模式自动识别：
+**注意**：`--module` 必须与 `--client` 搭配使用。
+
+### 场景 3：HTML/XML 反向转为 Pug
+
+```bash
+pug-cli page.html -o src/ --reverse
+```
+
+工具自动识别模式：
 - 检测到 `<!DOCTYPE html>` 或 `<html>` 标签 → **HTML 模式**（使用 `#id`、`.class` 简写，布尔属性省略值）
 - 否则 → **XML 模式**（保留命名空间、CDATA、属性完整语法）
 
 输出文件名为 `<原名>.pug`。
 
-### SVG 渲染 `-S, --to-svg`
+### 场景 4：渲染为 SVG（卡片/封面/海报）
 
 ```bash
-pug-cli card.pug -o output/ --to-svg --width 400 --height 200
-pug-cli page.html -o output/ --to-svg
+# Pug → HTML → SVG
+pug-cli card.pug -o dist/ --to-svg --width 390 --height 844
+
+# HTML → SVG（跳过 Pug 编译）
+pug-cli page.html -o dist/ --to-svg
+
+# 带自定义字体（支持 TTF/OTF/WOFF，可重复）
+pug-cli card.pug -o dist/ --to-svg --fonts ./fonts/PingFang.ttf
 ```
 
-将 `.pug` 或 `.html` 文件渲染为 SVG（通过 Vercel Satori 引擎）。流程：
-- `.pug` 文件 → 先编译为 HTML → 再渲染 SVG
-- `.html` 文件 → 直接渲染 SVG
+**流程**：`.pug` 文件 → Pug 编译为 HTML → Satori 引擎渲染 SVG。
 
-输出文件名为 `<原名>.svg`。
+**字体**：内置 Inter（拉丁）和 Noto Sans SC（中日韩）。额外字体用 `--fonts` 加载。
 
-### PNG 渲染 `-P, --to-png`
+**宽高检测**：`--width`/`--height` 未指定时，优先从 HTML 内联样式中自动检测，否则回退到 800×600。
+
+### 场景 5：渲染为 PNG（截图/封面/OG 图）
 
 ```bash
-pug-cli card.pug -o output/ --to-png --width 400 --height 200
-pug-cli page.html -o output/ --to-png
+# Pug → HTML → PNG
+pug-cli card.pug -o dist/ --to-png --width 1200
+
+# HTML → PNG
+pug-cli page.html -o dist/ --to-png
+
+# Retina 缩放 + 自动裁剪
+pug-cli card.pug -o dist/ --to-png --scale 2 --auto-crop
+
+# 指定浏览器路径
+pug-cli card.pug -o dist/ --to-png --browser "C:\Program Files\Chromium\chrome.exe"
 ```
 
-将 `.pug` 或 `.html` 文件渲染为 PNG（通过 Playwright 无头 Chromium）。流程同上。
+**⚠️ 需要 Chrome / Edge / Chromium。** 可用 `--browser` 指定路径或设置 `CHROME_PATH` 环境变量。
 
-**⚠️ 需要系统安装 Chrome / Edge / Chromium。** 若未检测到浏览器则直接报错退出。
+**注意**：
+- 默认 `--scale 2`（Retina），值为 1 时像素级对应。
+- 浏览器搜索路径和启动参数详见[配置文件](#配置文件)。
+- `--width`/`--height` 未指定时自动检测逻辑同 SVG。
 
-输出文件名为 `<原名>.png`。
-
-### 标准输入 `--stdin`
+### 场景 6：管道/CI 使用
 
 ```bash
-echo "h1 hello" | pug-cli --stdin
+echo "h1 #{title}" | pug-cli --stdin -O '{"title":"Hello"}'
+cat template.pug | pug-cli --stdin --pretty
 ```
 
-从标准输入读取 Pug 模板，编译后的 HTML 直接输出到标准输出。
-
-- 不能与 `--watch` 同时使用。
-- 不支持文件输出（结果始终打印到 stdout）。
-
-### 监听模式 `-w, --watch`
+### 场景 7：监听模式（开发时实时编译）
 
 ```bash
-pug-cli file.pug -o output/ --watch
+pug-cli src/index.pug -o dist/ --watch
 ```
 
-监听文件变化，变化时自动重新编译。行为：
-1. 立即执行一次全量编译
-2. 使用 `fs.watch` 监听每个文件（带 100ms 防抖）
-3. 按 `Ctrl+C` 停止
-
----
-
-## 编译选项
-
-所有编译选项直接映射到 Pug 原生 API。
-
-| 选项 | 对应 Pug 选项 | 说明 |
-|------|--------------|------|
-| `-b, --basedir <dir>` | `basedir` | 设置 `include`/`extends` 路径解析的根目录。默认：文件所在目录 |
-| `-p, --pretty` | `pretty: true` | 美化 HTML 输出（缩进和换行） |
-| `-D, --no-debug` | `compileDebug: false` | 禁用编译调试信息（默认开启） |
-| `-d, --doctype <str>` | `doctype` | 覆盖 doctype。可选值：`html`、`xml`、`transitional` 等 |
-| `-g, --global <name>` | `globals` | 声明全局变量。可重复使用多次 |
-| `-s, --self` | `self: true` | 使用 `self` 命名空间访问 locals |
-| `-C, --cache` | `cache: true` | 启用模板缓存 |
-
-### 模板变量 `-O, --obj`
-
-```bash
-# JSON 字符串
-pug-cli file.pug -o output/ -O '{"title":"Hello","items":[1,2,3]}'
-
-# JSON 文件路径（自动检测：文件存在则读文件，否则解析为 JSON 字面量）
-pug-cli file.pug -o output/ -O data.json
-```
-
-### 客户端 JS 编译
-
-| 选项 | 行为 |
-|------|------|
-| `-c, --client` | 编译为客户端 JavaScript 函数（调用 `pug.compileClient`） |
-| `-M, --module` | 包装为 CommonJS `module.exports`（需与 `--client` 一起使用） |
-| `-n, --name <str>` | 指定模板函数名（默认 `"template"`） |
-
-```bash
-# 编译为独立 JS 函数
-pug-cli file.pug -o output/ --client
-
-# 带模块导出和自定义函数名
-pug-cli file.pug -o output/ --client --module --name myTemplate
-```
-
-### 扩展性
-
-| 选项 | 行为 |
-|------|------|
-| `-f, --filter <name=mod>` | 注册一个 Pug filter。格式：`name=module`，如 `md=jstransformer-markdown-it` |
-| `--plugin <module>` | 加载一个 Pug 插件模块。可重复使用多次 |
-
----
-
-## 图像输出选项
-
-以下选项适用于 `--to-svg` 和 `--to-png` 模式。
-
-| 选项 | 适用模式 | 默认值 | 说明 |
-|------|---------|--------|------|
-| `--width <n>` | SVG / PNG | 自动检测 → 800 | 画布/视口宽度（像素）。优先从 HTML 内联样式中自动检测 |
-| `--height <n>` | SVG / PNG | 自动检测 → 600 | 画布/视口高度（像素）。优先从 HTML 内联样式中自动检测 |
-| `--font <path>` | 仅 SVG | — | 加载额外字体文件（TTF/OTF/WOFF）。可重复使用多次。内置 Inter（拉丁）+ Noto Sans SC（中日韩） |
-
-### PNG 专属选项
-
-| 选项 | 默认值 | 说明 |
-|------|--------|------|
-| `-B, --browser <path>` | 自动检测 | 指定浏览器可执行文件路径 |
-| `--scale <n>` | 2 | 设备缩放因子（Retina）。值为 1 时不缩放 |
-| `--auto-crop` | false | 自动裁剪到内容边界框 |
-| `--full-page` | 由配置决定 | 截取完整可滚动页面。配置文件默认开启（`fullPage: true`） |
+执行后立即编译一次，然后监听文件变化自动重新编译（100ms 防抖），按 `Ctrl+C` 停止。
 
 ---
 
 ## 配置文件
 
-运行 `pug-cli --config-gen` 可生成配置模板 `pug-cli.config.json`：
+运行 `pug-cli --config-gen` 生成 `pug-cli.config.json` 模板。
 
-```json
-{
-  "browser": {
-    "searchPaths": ["D:\\MyTools\\chrome.exe"],
-    "launchArgs": ["--no-sandbox"]
-  },
-  "defaults": {
-    "width": 1200,
-    "height": 800,
-    "scale": 1,
-    "fullPage": true
-  },
-  "png": {
-    "wrapperCss": "*{margin:0;padding:0;box-sizing:border-box}..."
-  }
-}
-```
-
-配置查找顺序（先找到的生效）：
+查找顺序（先找到的生效）：
 1. `./pug-cli.config.json`（当前工作目录）
 2. `~/.pug-cli/config.json`（用户主目录）
 
+| 配置路径 | 用途 | CLI 对应 |
+|----------|------|----------|
+| `browser.searchPaths` | 浏览器搜索路径（数组） | `--browser` |
+| `browser.launchArgs` | 浏览器启动参数 | — |
+| `defaults.width` | 图像默认宽度 | `--width` |
+| `defaults.height` | 图像默认高度 | `--height` |
+| `defaults.scale` | PNG 默认缩放 | `--scale` |
+| `defaults.fullPage` | PNG 是否截取完整可滚动页面 | **仅配置文件** |
+| `png.wrapperCss` | PNG 渲染时注入的包装 CSS | **仅配置文件** |
+
 ---
 
-## 完整示例
+## 常见问题与调试
 
-```bash
-# 基础编译
-pug-cli src/index.pug -o dist/ --pretty -O '{"title":"My Site"}'
+### 浏览器检测失败
 
-# 监听模式 + 美化
-pug-cli src/index.pug -o dist/ --pretty --watch
-
-# 客户端 JS 编译
-pug-cli src/template.pug -o dist/ --client --module --name renderCard
-
-# HTML 转 Pug
-pug-cli page.html -o src/ --reverse
-
-# Pug 渲染为 SVG（带自定义字体）
-pug-cli card.pug -o dist/ --to-svg --width 390 --height 844 --font ./fonts/PingFang.ttf
-
-# HTML 渲染为 PNG（Retina + 裁剪）
-pug-cli page.html -o dist/ --to-png --width 1200 --scale 2 --auto-crop
-
-# 管道输入
-cat template.pug | pug-cli --stdin --pretty
 ```
+Error: No Chromium browser detected.
+```
+
+排查步骤：
+1. 安装 Chrome / Edge / Chromium
+2. 用 `--browser <path>` 显式指定路径
+3. 设置 `CHROME_PATH` 环境变量
+4. 在配置文件的 `browser.searchPaths` 中添加路径
+
+使用 `--browser-detect` 可查看所有搜索路径的诊断详情。
+
+### include/extends 路径解析失败
+
+```
+the "basedir" option is required to use includes and extends with "absolute" paths
+```
+
+- 使用 `--basedir <dir>` 设置正确的根目录
+- 默认 basedir 为输入文件所在目录
+- 绝对路径的 include/extends 必须指定 `--basedir`
+
+### 字体加载失败（SVG 模式）
+
+- 确认字体文件路径正确（使用 `--fonts ./path/to/font.ttf`）
+- 支持 TTF / OTF / WOFF 格式
+- 内置 Inter + Noto Sans SC，仅在这些字体覆盖不足时需要自定义字体

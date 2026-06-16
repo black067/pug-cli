@@ -63,11 +63,10 @@ function buildPugOptions(filePath, opts) {
     filename: filePath,
     basedir: basedir,
     pretty: !!opts.pretty,
-    compileDebug: opts.compileDebug !== false,
+    compileDebug: true,
     doctype: opts.doctype || undefined,
     globals: opts.globals && opts.globals.length > 0 ? opts.globals : undefined,
     self: !!opts.self,
-    cache: !!opts.cache,
     filters: opts.filters && Object.keys(opts.filters).length > 0 ? opts.filters : undefined,
     plugins: plugins,
   };
@@ -186,7 +185,6 @@ async function toSvgAndWrite(filePath, opts) {
  * Compile one .pug file (or HTML file) to PNG and write output.
  * For .pug files: Pug → HTML → PNG via Playwright
  * For .html files: HTML → PNG directly
- * Falls back to SVG if no browser is available (unless forcePng is set).
  */
 async function toPngAndWrite(filePath, opts) {
   const resolved = path.resolve(filePath);
@@ -210,7 +208,6 @@ async function toPngAndWrite(filePath, opts) {
       height: opts.pngHeight,
       scale: opts.pngScale,
       autoCrop: opts.autoCrop,
-      fullPage: opts.fullPage,
       browserPath: opts.browserPath,
     });
     console.log('  wrote ' + outPath);
@@ -338,18 +335,16 @@ var OPTIONS = [
   { group: 'Info', long: '--help',             short: '-h',  type: 'action', action: 'help',          desc: 'Display this help message' },
   { group: 'Info', long: '--version',          short: '-V',  type: 'action', action: 'version',       desc: 'Display version information' },
   { group: 'Info', long: '--config-gen',                     type: 'action', action: 'configGen',     desc: 'Generate pug-cli.config.json template in current directory' },
-  { group: 'Info', long: '--browser-detect',                 type: 'action', action: 'browserDetect', desc: 'Show browser detection diagnostics (all levels)' },
+  { group: 'Info', long: '--browser-detect',                 type: 'flag',   key: 'browserDetect', desc: 'Show browser detection diagnostics (all levels). Skipped if --browser is specified.' },
 
   // -- Compilation ------------------------------------------------------------
   { group: 'Compilation', long: '--out',       short: '-o',  type: 'path',   key: 'outDir',    desc: 'Output path (single input: file path; multi input: directory). Default: current dir' },
   { group: 'Compilation', long: '--basedir',   short: '-b',  type: 'path',   key: 'basedir',   desc: 'Base directory for include/extends + CSS <link> resolution (default: dir of input file)' },
   { group: 'Compilation', long: '--pretty',    short: '-p',  type: 'flag',   key: 'pretty',    desc: 'Pretty-print HTML output' },
   { group: 'Compilation', long: '--locals',    short: '-O',  type: 'json',   key: 'locals',    desc: 'JSON string or JSON file with template variables' },
-  { group: 'Compilation', long: '--no-debug',  short: '-D',  type: 'flag',   key: 'compileDebug', desc: 'Disable compile debug info (default: on)', invert: true },
   { group: 'Compilation', long: '--doctype',   short: '-d',  type: 'str',    key: 'doctype',   desc: 'Override doctype (html, xml, transitional, etc.)' },
-  { group: 'Compilation', long: '--global',    short: '-g',  type: 'list',   key: 'globals',   desc: 'Declare a global variable (repeatable)' },
+  { group: 'Compilation', long: '--global',    short: '-g',  type: 'list',   key: 'globals',   desc: 'Declare a global variable (repeatable)', multiple: true },
   { group: 'Compilation', long: '--self',      short: '-s',  type: 'flag',   key: 'self',      desc: 'Use self namespace for locals' },
-  { group: 'Compilation', long: '--cache',     short: '-C',  type: 'flag',   key: 'cache',     desc: 'Enable template caching' },
 
   // -- Client-side JS ---------------------------------------------------------
   { group: 'Client JS', long: '--client',     short: '-c',  type: 'flag',   key: 'client',    desc: 'Compile to client-side JS function' },
@@ -365,12 +360,11 @@ var OPTIONS = [
   { group: 'MCP', long: '--debug',             type: 'flag',   key: 'debug',      desc: 'Enable debug mode (with --mcp-server: stderr debug logs, Satori layout bounding boxes, error stack traces)' },
 
   // -- I/O modes --------------------------------------------------------------
-  { group: 'I/O modes', long: '--watch',     short: '-w',  type: 'flag',   key: 'watch',      desc: 'Watch files for changes' },
+  { group: 'I/O modes', long: '--watch',     short: '-w',  type: 'flag',   key: 'watch',      desc: 'Watch files for changes (normal Pug→HTML only; incompatible with --to-svg, --to-png, --reverse)' },
   { group: 'I/O modes', long: '--stdin',                   type: 'flag',   key: 'stdin',       desc: 'Read template from stdin' },
   { group: 'I/O modes', long: '--reverse',   short: '-R',  type: 'flag',   key: 'reverse',    desc: 'Convert HTML/XML file to Pug (auto-detect mode)' },
   { group: 'I/O modes', long: '--to-svg',    short: '-S',  type: 'flag',   key: 'toSvg',      desc: 'Convert .pug or .html to SVG (via Satori)' },
   { group: 'I/O modes', long: '--to-png',    short: '-P',  type: 'flag',   key: 'toPng',      desc: 'Convert .pug or .html to PNG (via Playwright)' },
-  { group: 'I/O modes', long: '--force-png',               type: 'flag',   key: 'forcePng',   desc: 'Force PNG mode even without browser' },
 
   // -- Image output -----------------------------------------------------------
   { group: 'Image', long: '--width',         type: 'num',    key: 'svgWidth',  desc: 'Canvas width in px (default: 800)',
@@ -383,7 +377,6 @@ var OPTIONS = [
   { group: 'PNG', long: '--browser',  short: '-B',  type: 'path',   key: 'browserPath', desc: 'Specify browser executable path' },
   { group: 'PNG', long: '--scale',                 type: 'num',    key: 'pngScale',    desc: 'Device scale factor / Retina (default: 2)' },
   { group: 'PNG', long: '--auto-crop',             type: 'flag',   key: 'autoCrop',    desc: 'Auto-crop PNG to content bounding box' },
-  { group: 'PNG', long: '--full-page',             type: 'flag',   key: 'fullPage',    desc: 'Capture full scrollable page as one PNG' },
 ];
 
 // ============================================================
@@ -503,7 +496,7 @@ function parseOption(args, startIdx, opts) {
       help:          function () { printUsage(false); },
       version:       function () { printVersion(); },
       configGen:     function () { generateConfigFile(); },
-      browserDetect: function () { var diag = browserDetector.getDiagnostics(opts.browserPath, CONFIG.browser.searchPaths); console.log(JSON.stringify(diag, null, 2)); },
+
     };
     if (actionMap[def.action]) actionMap[def.action]();
     return 0; // caller checks: if 0 and action, exit
@@ -623,7 +616,6 @@ function main() {
     reverse: false,
     toSvg: false,
     toPng: false,
-    forcePng: false,
     // MCP
     mcpServer: false,
     debug: false,
@@ -636,16 +628,14 @@ function main() {
     pngHeight: undefined,
     pngScale: 2,
     autoCrop: false,
-    fullPage: undefined,
     browserPath: undefined,
+    browserDetect: false,
     // Compilation (native pug options)
     basedir: undefined,
     pretty: false,
-    compileDebug: true,
     doctype: undefined,
     globals: [],
     self: false,
-    cache: false,
     filters: {},
     plugins: [],
     // Client-side
@@ -679,6 +669,17 @@ function main() {
   if (opts.debug && !opts.mcpServer) {
     console.error('Error: --debug requires --mcp-server');
     process.exit(EXIT_FAILURE);
+  }
+
+  // Handle --browser-detect (deferred, respects --browser)
+  if (opts.browserDetect) {
+    if (opts.browserPath) {
+      console.log('Browser already specified (' + opts.browserPath + '), skipping detection.');
+    } else {
+      var diag = browserDetector.getDiagnostics(opts.browserPath, CONFIG.browser.searchPaths);
+      console.log(JSON.stringify(diag, null, 2));
+    }
+    return;
   }
 
   // Handle --mcp-server
@@ -733,14 +734,6 @@ function main() {
     console.error('Error: --auto-crop requires --to-png');
     process.exit(EXIT_FAILURE);
   }
-  if (!opts.toPng && opts.fullPage) {
-    console.error('Error: --full-page requires --to-png');
-    process.exit(EXIT_FAILURE);
-  }
-  if (!opts.toPng && opts.forcePng) {
-    console.error('Error: --force-png requires --to-png');
-    process.exit(EXIT_FAILURE);
-  }
 
   // Need files
   if (opts.files.length === 0) {
@@ -749,10 +742,14 @@ function main() {
     process.exit(EXIT_FAILURE);
   }
 
-  // Handle --watch
+  // Handle --watch (normal Pug→HTML only)
   if (opts.watch) {
-    startWatch(opts.files, opts);
-    return;
+    if (opts.toSvg || opts.toPng || opts.reverse) {
+      console.error('Warning: --watch is only supported for normal Pug→HTML compilation. Ignoring --watch.');
+    } else {
+      startWatch(opts.files, opts);
+      return;
+    }
   }
 
   // PNG mode: convert Pug/HTML → PNG
