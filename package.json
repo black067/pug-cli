@@ -13,10 +13,10 @@
     "build": "npm run bundle && npm run sea"
   },
   "devDependencies": {
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.1",
     "png-to-ico": "^3.0.1",
     "postject": "^1.0.0-alpha.6",
-    "pug": "^2.0.4",
+    "pug": "^3.0.4",
     "resedit": "^3.0.2",
     "sharp": "^0.34.5"
   },
