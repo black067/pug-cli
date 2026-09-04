@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>gen-image example — 48x48 gem</title>
+<style>
+  html, body {
+    width: 48px; height: 48px;
+    margin: 0; padding: 0;
+    background: transparent;
+  }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<!--
+  gen-image 流水线最小示例：
+  - 部件拼装：4 个切面多边形 + 高光 + 描点，从后到前绘制
+  - SVG 后处理：gradient 分面、统一描边、feDropShadow 投影
+  - 透明背景 + 四周留白
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="facet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9fd6e8"/>
+      <stop offset="1" stop-color="#3f8fb8"/>
+    </linearGradient>
+    <linearGradient id="facetDark" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#1f6a93"/>
+      <stop offset="1" stop-color="#57a8cc"/>
+    </linearGradient>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#0a2430" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- 主体轮廓：深色剪影作为描边底，同时携带柔和投影 -->
+  <polygon points="24,4 42,24 24,44 6,24" fill="#12384e" filter="url(#softShadow)"/>
+
+  <!-- 四个切面：左上高光 / 右上 / 左下 / 右下 -->
+  <polygon points="24,4 42,24 24,28 6,24" fill="url(#facet)"/>
+  <polygon points="24,44 42,24 24,28" fill="url(#facetDark)"/>
+  <polygon points="24,44 6,24 24,28" fill="url(#facetDark)"/>
+
+  <!-- 中央亮区与高光 -->
+  <polygon points="24,12 32,24 24,26 16,24" fill="#eaf7fc" opacity="0.85"/>
+  <polygon points="18,20 24,14 25,22" fill="#ffffff" opacity="0.9"/>
+
+  <!-- 四角描点（装饰部件） -->
+  <circle cx="24" cy="7" r="1.4" fill="#dff2fa"/>
+  <circle cx="41" cy="24" r="1.4" fill="#dff2fa"/>
+  <circle cx="24" cy="41" r="1.4" fill="#dff2fa"/>
+  <circle cx="7" cy="24" r="1.4" fill="#dff2fa"/>
+</svg>
+</body>
+</html>
