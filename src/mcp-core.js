@@ -477,6 +477,7 @@ async function renderPngFromTasks(tasks, args, htmlFn) {
       await htmlToPng(r.content, pngPath, {
         width: args.width, height: args.height, scale: args.scale,
         autoCrop: !!args.autoCrop, fullPage: args.fullPage, browserPath: args.browserPath,
+        elementId: args.elementId,
       });
 
       pngResults.push({ input: r.key, output: pngPath });
@@ -670,6 +671,7 @@ function startMcpServer(serverOpts) {
               autoCrop: { type: 'boolean', default: false, description: 'Auto-crop to content bounds.' },
               fullPage: { type: 'boolean', default: true, description: 'Capture full scrollable page. Set false for viewport-only.' },
               browserPath: { type: 'string', description: 'Explicit browser executable path.' },
+              elementId: { type: 'string', description: 'Capture only the element with this id (omit for full page).' },
               returnBase64: { type: 'boolean', default: false, description: 'Also return the PNG as a base64 data URI.' },
               basedir: { type: 'string', description: 'Base directory for CSS <link> resolution. Defaults to cwd.' },
               css: { type: 'string', description: 'CSS string to inject as inline <style>. Preferred over <link> tags.' },
@@ -704,6 +706,7 @@ function startMcpServer(serverOpts) {
               autoCrop: { type: 'boolean', default: false, description: 'Auto-crop to content bounds.' },
               fullPage: { type: 'boolean', default: true, description: 'Capture full scrollable page. Set false for viewport-only.' },
               browserPath: { type: 'string', description: 'Explicit browser executable path.' },
+              elementId: { type: 'string', description: 'Capture only the element with this id (omit for full page).' },
               returnBase64: { type: 'boolean', default: false, description: 'Also return the PNG as a base64 data URI.' },
             },
             required: ['source', 'output'],

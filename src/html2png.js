@@ -180,62 +180,76 @@ function normalizeHtmlContent(htmlString) {
  * @param {boolean} [opts.autoCrop=false] - Auto-crop to body bounding box
  * @param {boolean} [opts.fullPage=false] - Capture full scrollable page
  * @param {string} [opts.browserPath] - Explicit browser executable path
+ * @param {string} [opts.elementId] - Capture only the element with this id
  * @returns {Promise<string>} The outputPath (resolved)
  */
 async function htmlToPng(htmlString, outputPath, opts) {
   opts = opts || {};
-
-  // Auto-detect dimensions from content if not explicitly provided.
-  // Fall back to config defaults (convention: 800×600, scale 2).
-  var detected = autoDetectDimensions(htmlString);
-  var width = opts.width || detected.width || CONFIG.defaults.width;
-  var height = opts.height || detected.height || CONFIG.defaults.height;
-  var scale = opts.scale != null ? opts.scale : CONFIG.defaults.scale;
 
   var resolvedPath = path.resolve(outputPath);
 
   var { browser } = await launchBrowser(opts);
 
   try {
-    var context = await browser.newContext({
-      viewport: { width: width, height: height },
-      deviceScaleFactor: scale,
-    });
+    var scale = opts.scale != null ? opts.scale : CONFIG.defaults.scale;
 
+    var contextOpts = { deviceScaleFactor: scale };
+    if (!opts.elementId) {
+      // Auto-detect dimensions from content if not explicitly provided.
+      // Fall back to config defaults (convention: 800×600, scale 2).
+      var detected = autoDetectDimensions(htmlString);
+      var width = opts.width || detected.width || CONFIG.defaults.width;
+      var height = opts.height || detected.height || CONFIG.defaults.height;
+      contextOpts.viewport = { width: width, height: height };
+    }
+
+    var context = await browser.newContext(contextOpts);
     var page = await context.newPage();
 
     // Wrap fragment content to eliminate default browser margins
     var normalizedHtml = normalizeHtmlContent(htmlString);
     await page.setContent(normalizedHtml, { waitUntil: 'networkidle' });
 
-    // Optional: auto-crop to content bounding box
-    var clip = undefined;
-    if (opts.autoCrop) {
-      try {
-        var bodyBox = await page.locator('body').boundingBox();
-        if (bodyBox) {
-          clip = {
-            x: bodyBox.x,
-            y: bodyBox.y,
-            width: Math.ceil(bodyBox.width),
-            height: Math.ceil(bodyBox.height),
-          };
+    if (opts.elementId) {
+      // Element-specific screenshot: capture only the element matched by id.
+      // Playwright locator.screenshot() auto-waits for visibility, scrolls into
+      // view, and crops precisely to the element's bounding box.
+      var locator = page.locator('#' + opts.elementId);
+      await locator.waitFor({ state: 'visible' });
+      await locator.screenshot({
+        path: resolvedPath,
+        type: 'png',
+      });
+    } else {
+      // Optional: auto-crop to content bounding box
+      var clip = undefined;
+      if (opts.autoCrop) {
+        try {
+          var bodyBox = await page.locator('body').boundingBox();
+          if (bodyBox) {
+            clip = {
+              x: bodyBox.x,
+              y: bodyBox.y,
+              width: Math.ceil(bodyBox.width),
+              height: Math.ceil(bodyBox.height),
+            };
+          }
+        } catch (_) {
+          // bounding box unavailable — screenshot full viewport
         }
-      } catch (_) {
-        // bounding box unavailable — screenshot full viewport
       }
+
+      // fullPage default comes from config (convention: true — capture natural content height).
+      // Explicit opts.fullPage (CLI --full-page) overrides the config default.
+      var fullPage = opts.fullPage != null ? opts.fullPage : CONFIG.defaults.fullPage;
+
+      await page.screenshot({
+        path: resolvedPath,
+        clip: clip,
+        type: 'png',
+        fullPage: fullPage,
+      });
     }
-
-    // fullPage default comes from config (convention: true — capture natural content height).
-    // Explicit opts.fullPage (CLI --full-page) overrides the config default.
-    var fullPage = opts.fullPage != null ? opts.fullPage : CONFIG.defaults.fullPage;
-
-    await page.screenshot({
-      path: resolvedPath,
-      clip: clip,
-      type: 'png',
-      fullPage: fullPage,
-    });
 
     await context.close();
     return resolvedPath;

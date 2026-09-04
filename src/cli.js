@@ -209,6 +209,7 @@ async function toPngAndWrite(filePath, opts) {
       scale: opts.pngScale,
       autoCrop: opts.autoCrop,
       browserPath: opts.browserPath,
+      elementId: opts.elementId,
     });
     console.log('  wrote ' + outPath);
     return true;
@@ -377,6 +378,7 @@ var OPTIONS = [
   { group: 'PNG', long: '--browser',  short: '-B',  type: 'path',   key: 'browserPath', desc: 'Specify browser executable path' },
   { group: 'PNG', long: '--scale',                 type: 'num',    key: 'pngScale',    desc: 'Device scale factor / Retina (default: 2)' },
   { group: 'PNG', long: '--auto-crop',             type: 'flag',   key: 'autoCrop',    desc: 'Auto-crop PNG to content bounding box' },
+  { group: 'PNG', long: '--element-id',           type: 'str',    key: 'elementId',   desc: 'Capture only the element with this id (with --to-png)' },
 ];
 
 // ============================================================
@@ -630,6 +632,7 @@ function main() {
     autoCrop: false,
     browserPath: undefined,
     browserDetect: false,
+    elementId: undefined,
     // Compilation (native pug options)
     basedir: undefined,
     pretty: false,
@@ -732,6 +735,10 @@ function main() {
   }
   if (!opts.toPng && opts.autoCrop) {
     console.error('Error: --auto-crop requires --to-png');
+    process.exit(EXIT_FAILURE);
+  }
+  if (!opts.toPng && opts.elementId) {
+    console.error('Error: --element-id requires --to-png');
     process.exit(EXIT_FAILURE);
   }
 
